@@ -1,0 +1,67 @@
+import React from 'react';
+import { motion } from 'framer-motion';
+import { ArrowRight, Wallet, Shield, Users } from 'lucide-react';
+import { Button } from '../components/ui/Primitives';
+
+interface EntryViewProps {
+  onConnect: () => void;
+}
+
+const EntryView: React.FC<EntryViewProps> = ({ onConnect }) => {
+  return (
+    <motion.div
+      className="flex flex-col items-center justify-center min-h-screen relative z-10 p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      <div className="text-center space-y-6 max-w-2xl">
+        <motion.h1
+          className="text-6xl md:text-8xl font-thin tracking-tighter text-white mb-4"
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+        >
+          AfterLife
+        </motion.h1>
+
+        <motion.p
+          className="text-xl text-stone-400 font-light max-w-lg mx-auto leading-relaxed"
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          Decentralized inheritance protocol. <br />
+          Secure your digital legacy with time-locked execution.
+        </motion.p>
+
+        <motion.div
+          className="pt-12 flex justify-center"
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.6 }}
+        >
+          <Button
+            onClick={onConnect}
+            className="group px-8 py-4 text-lg bg-white text-black hover:bg-stone-200 border-none flex items-center gap-3 transition-transform hover:scale-105"
+          >
+            <Wallet className="w-5 h-5" />
+            Connect Wallet
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </Button>
+        </motion.div>
+
+        <motion.div
+          className="pt-8 flex gap-8 justify-center text-xs text-stone-600 uppercase tracking-widest"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+        >
+          <span className="flex items-center gap-2"><Shield className="w-3 h-3" /> Self-Custodial</span>
+          <span className="flex items-center gap-2"><Users className="w-3 h-3" /> DAO Governed</span>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+};
+
+export default EntryView;
