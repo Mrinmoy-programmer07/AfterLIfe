@@ -2,20 +2,52 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, Button, Progress, Badge, Dialog } from '../components/ui/Primitives';
 import { ProtocolState, ProtocolContextType } from '../types';
-import { Heart, Activity, UserPlus } from 'lucide-react';
+import { Heart, Activity, UserPlus, Trash2 } from 'lucide-react';
 import { formatDuration } from '../services/mockService';
 import gsap from 'gsap';
 import GuardianList from '../components/GuardianList';
 import BeneficiaryList from '../components/BeneficiaryList';
 import { useAfterLifeContract } from '../hooks/useAfterLifeContract';
+import { useAccount } from 'wagmi';
 
 const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
+  const { address } = useAccount();
   const [pulse, setPulse] = useState(false);
   const remainingTime = context.inactivityThreshold - (Date.now() - context.lastHeartbeat);
   const remainingPct = Math.max(0, (remainingTime / context.inactivityThreshold) * 100);
 
   // Contract Integration
-  const { addGuardian: contractAddGuardian, addBeneficiary: contractAddBeneficiary, proveLife: contractProveLife, isLoading } = useAfterLifeContract();
+  const {
+    addGuardian: contractAddGuardian,
+    removeGuardian: contractRemoveGuardian,
+    addBeneficiary: contractAddBeneficiary,
+    removeBeneficiary: contractRemoveBeneficiary,
+    proveLife: contractProveLife,
+    isLoading,
+    error: contractError
+  } = useAfterLifeContract();
+
+  const handleRemoveGuardian = async (address: string) => {
+    if (!confirm("Are you sure you want to remove this Guardian? This action is irreversible.")) return;
+    try {
+      await contractRemoveGuardian(address);
+      alert("Removal transaction sent. The list will update shortly.");
+    } catch (e) {
+      console.error("Removal failed:", e);
+      alert("Failed to remove guardian.");
+    }
+  };
+
+  const handleRemoveBeneficiary = async (address: string) => {
+    if (!confirm("Are you sure you want to remove this Beneficiary? This action is irreversible.")) return;
+    try {
+      await contractRemoveBeneficiary(address);
+      alert("Removal transaction sent. The list will update shortly.");
+    } catch (e) {
+      console.error("Removal failed:", e);
+      alert("Failed to remove beneficiary.");
+    }
+  };
 
   // Modal State
   const [isAddGuardianOpen, setIsAddGuardianOpen] = useState(false);
@@ -132,7 +164,10 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
 
       <header className="absolute top-8 left-8 flex items-center gap-3">
         <Badge variant="success">Active</Badge>
-        <span className="text-sm text-secondary font-mono tracking-wider">PROTOCOL ID: 0x82...19F</span>
+        <span className="text-sm text-secondary font-mono tracking-wider">
+          OWNER: {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "CONNECTING..."}
+          <span className="ml-2 opacity-50">{useAfterLifeContract().publicClient?.chain?.name}</span>
+        </span>
       </header>
 
       {/* Action Buttons Header */}
@@ -194,11 +229,55 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
 
         {/* Lists Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <GuardianList guardians={context.guardians} />
-          <BeneficiaryList
-            beneficiaries={context.beneficiaries}
-            onUpdateAllocation={context.updateBeneficiaryAllocation}
-          />
+          <Card className="p-6">
+            <h3 className="text-lg text-white font-medium mb-4">Guardians</h3>
+            <div className="space-y-3">
+              {context.guardians.map(g => (
+                <div key={g.id} className="bg-stone-800/40 p-3 rounded-lg flex items-center justify-between border border-stone-700/50">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${Date.now() - (g.lastActive || 0) < 60000 ? 'bg-emerald-500' : 'bg-stone-600'}`} />
+                    <div>
+                      <div className="text-white font-medium text-sm">{g.name}</div>
+                      <div className="text-xs text-stone-500 font-mono">{g.address.slice(0, 6)}...{g.address.slice(-4)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="success">Active</Badge>
+                    <button onClick={() => handleRemoveGuardian(g.address)} className="text-stone-600 hover:text-red-500 transition-colors p-1">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card className="p-6">
+            <h3 className="text-lg text-white font-medium mb-4">Beneficiaries</h3>
+            <div className="space-y-3">
+              {context.beneficiaries.map(b => (
+                <div key={b.id} className="bg-stone-800/40 p-3 rounded-lg border border-stone-700/50">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <div className="text-white font-medium text-sm">{b.name}</div>
+                      <div className="text-xs text-stone-500 font-mono">{b.address.slice(0, 6)}...{b.address.slice(-4)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="neutral">{b.allocation}%</Badge>
+                      <button onClick={() => handleRemoveBeneficiary(b.address)} className="text-stone-600 hover:text-red-500 transition-colors p-1">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="w-full bg-stone-700 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-purple-500 h-full rounded-full opacity-50"
+                      style={{ width: `${b.allocation}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
       </main>
 

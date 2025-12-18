@@ -18,3 +18,5 @@ View your app in AI Studio: https://ai.studio/apps/drive/11e03cnl3fy3u4ByhJgJ0ru
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+   contract address for AfterLife: 0x584D45746E694Dd11233020c000C0bc00c2bddfA

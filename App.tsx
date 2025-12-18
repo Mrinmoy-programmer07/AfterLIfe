@@ -11,7 +11,8 @@ import { Button, Badge } from './components/ui/Primitives';
 import { EventLog } from './components/ui/EventLog';
 import { LogOut } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useWallet } from './hooks/useWallet';
+import { useAccount, useDisconnect } from 'wagmi';
+import { useAfterLifeContract } from './hooks/useAfterLifeContract';
 
 const INACTIVITY_THRESHOLD_MS = 30000; // Fast for demo purposes (30s)
 
@@ -24,8 +25,8 @@ const App: React.FC = () => {
   const [elapsedTime, setElapsedTime] = useState(0);
 
   // Entity State
-  const [guardians, setGuardians] = useState<Guardian[]>(INITIAL_GUARDIANS);
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(INITIAL_BENEFICIARIES);
+  const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
 
   // Event Log State
   const [events, setEvents] = useState<ProtocolEvent[]>([]);
@@ -205,8 +206,59 @@ const App: React.FC = () => {
   };
 
   // Wallet & Routing
-  const { address, isConnected, connect, disconnect } = useWallet();
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
+  // Using the updated hook to read data
+  const { getGuardians, getBeneficiaries, getProtocolState } = useAfterLifeContract();
+
   const [hasRegisteredOwner, setHasRegisteredOwner] = useState(false); // To bootstrap the first user as owner
+
+  // Fetch Data from Blockchain on Connect
+  useEffect(() => {
+    if (isConnected) {
+      const syncData = async () => {
+        // 1. Fetch Entities
+        const _guardians = await getGuardians();
+        if (_guardians.length > 0) {
+          // @ts-ignore
+          setGuardians(_guardians.map(g => ({ ...g, joinedAt: Date.now() })));
+        }
+
+        const _beneficiaries = await getBeneficiaries();
+        if (_beneficiaries.length > 0) {
+          // @ts-ignore
+          setBeneficiaries(_beneficiaries);
+        }
+
+        // 2. Fetch Protocol State (Heartbeat, etc)
+        const protocolState = await getProtocolState();
+        if (protocolState) {
+          setLastHeartbeat(protocolState.lastHeartbeat);
+          // Check if dead
+          if (protocolState.isDead) {
+            setState(ProtocolState.EXECUTING);
+          } else {
+            // Calculate local state based on heartbeat
+            const now = Date.now();
+            const elapsed = now - protocolState.lastHeartbeat;
+            if (elapsed > protocolState.inactivityThreshold) {
+              setState(ProtocolState.PENDING);
+            } else if (elapsed > protocolState.inactivityThreshold * 0.7) {
+              setState(ProtocolState.WARNING);
+            } else {
+              setState(ProtocolState.ACTIVE);
+            }
+          }
+          addEvent(`Synced Protocol State. Heartbeat: ${new Date(protocolState.lastHeartbeat).toLocaleTimeString()}`, 'INFO');
+        }
+      };
+      syncData();
+
+      // Poll for heartbeat updates every 30s
+      const poll = setInterval(syncData, 30000);
+      return () => clearInterval(poll);
+    }
+  }, [isConnected]);
 
   // Auto-Route removed. We now wait for user selection.
 
@@ -244,7 +296,7 @@ const App: React.FC = () => {
 
   const renderView = () => {
     if (!isConnected) {
-      return <EntryView onConnect={connect} />;
+      return <EntryView />;
     }
 
     // If connected but no role selected/detected, show Selection View

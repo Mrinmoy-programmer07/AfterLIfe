@@ -2,12 +2,18 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Wallet, Shield, Users } from 'lucide-react';
 import { Button } from '../components/ui/Primitives';
+import { useConnect } from 'wagmi';
 
-interface EntryViewProps {
-  onConnect: () => void;
-}
+const EntryView: React.FC = () => {
+  const { connectors, connect } = useConnect();
 
-const EntryView: React.FC<EntryViewProps> = ({ onConnect }) => {
+  const handleConnect = () => {
+    const injectedConnector = connectors.find(c => c.id === 'injected');
+    if (injectedConnector) {
+      connect({ connector: injectedConnector });
+    }
+  };
+
   return (
     <motion.div
       className="flex flex-col items-center justify-center min-h-screen relative z-10 p-6"
@@ -41,7 +47,7 @@ const EntryView: React.FC<EntryViewProps> = ({ onConnect }) => {
           transition={{ delay: 0.6 }}
         >
           <Button
-            onClick={onConnect}
+            onClick={handleConnect}
             className="group px-8 py-4 text-lg bg-white text-black hover:bg-stone-200 border-none flex items-center gap-3 transition-transform hover:scale-105"
           >
             <Wallet className="w-5 h-5" />

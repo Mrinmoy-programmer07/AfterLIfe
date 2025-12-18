@@ -1,122 +1,251 @@
-import { useState, useEffect } from 'react';
-import { ethers, Contract } from 'ethers';
-import { useWallet } from './useWallet';
+import { useState } from 'react';
+import { useAccount, useWriteContract, usePublicClient, useSwitchChain } from 'wagmi';
 
 // Import the compiled contract ABI
 // @ts-ignore - JSON import
 import AfterLifeArtifact from '../artifacts/contracts/AfterLife.sol/AfterLife.json';
 
-// Contract address - deployed on Arbitrum Sepolia
-let CONTRACT_ADDRESS = "0x584D45746E694Dd11233020c000C0bc00c2bddfA";
-
-// Try to load from deployment file if available
-try {
-    // @ts-ignore
-    const deploymentInfo = require('../contract-address.json');
-    if (deploymentInfo.address) {
-        CONTRACT_ADDRESS = deploymentInfo.address;
-    }
-} catch (e) {
-    console.log("Using hardcoded contract address");
-}
+// Deployed on Arbitrum Sepolia
+const CONTRACT_ADDRESS = "0x1B41eD3F6DdAE9C7534573cC863d1eD114fAC890";
 
 export const useAfterLifeContract = () => {
-    const { signer, isConnected, provider } = useWallet();
-    const [contract, setContract] = useState<Contract | null>(null);
+    const { isConnected, chain } = useAccount();
+    const { switchChainAsync } = useSwitchChain();
+    const { writeContractAsync } = useWriteContract();
+    const publicClient = usePublicClient();
+
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const initContract = async () => {
-            if (!isConnected || !signer) {
-                setContract(null);
-                setError("Wallet not connected");
-                return;
-            }
-
+    const validateNetwork = async () => {
+        if (!isConnected) throw new Error("Wallet not connected");
+        if (chain?.id !== 421614) {
             try {
-                const instance = new ethers.Contract(
-                    CONTRACT_ADDRESS,
-                    AfterLifeArtifact.abi,
-                    signer
-                );
-                setContract(instance);
-                console.log("Contract initialized at:", CONTRACT_ADDRESS);
-            } catch (error) {
-                console.error("Failed to initialize contract:", error);
+                await switchChainAsync({ chainId: 421614 });
+            } catch (e) {
+                throw new Error("Please switch MetaMask to Arbitrum Sepolia (Chain ID: 421614)");
             }
-        } else {
-            setContract(null);
-    }
-    }, [signer, isConnected]);
+        }
+    };
 
-// Helper functions for common contract interactions
-const addGuardian = async (name: string, address: string) => {
-    if (!contract) throw new Error("Contract not initialized");
-    setIsLoading(true);
-    try {
-        const tx = await contract.addGuardian(name, address);
-        await tx.wait();
-        console.log("Guardian added:", address);
-        return tx;
-    } catch (error) {
-        console.error("Error adding guardian:", error);
-        throw error;
-    } finally {
-        setIsLoading(false);
-    }
-};
+    const handleTransaction = async (functionName: string, args: any[]) => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            await validateNetwork();
 
-const addBeneficiary = async (
-    name: string,
-    address: string,
-    allocationBps: number,
-    vestingType: number,
-    duration: number
-) => {
-    if (!contract) throw new Error("Contract not initialized");
-    setIsLoading(true);
-    try {
-        const tx = await contract.addBeneficiary(
+            console.log("-------------------------------------------");
+            console.log(`Sending transaction: ${functionName}`);
+            console.log("Args:", args);
+            console.log("Contract:", CONTRACT_ADDRESS);
+            // @ts-ignore
+            console.log("Sender:", isConnected ? chain.id : "Not Connected");
+            console.log("-------------------------------------------");
+
+            const hash = await writeContractAsync({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName,
+                args,
+            });
+
+            console.log("Transaction sent! Hash:", hash);
+
+            // Wait for confirmation
+            if (publicClient) {
+                const receipt = await publicClient.waitForTransactionReceipt({ hash });
+                console.log("Transaction confirmed:", receipt.transactionHash);
+                return receipt;
+            } else {
+                return { hash }; // Fallback if public client missing
+            }
+
+        } catch (err: any) {
+            console.error(`Error in ${functionName}:`, err);
+            const message = err.shortMessage || err.message || "Transaction failed";
+            setError(message);
+            throw err;
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Helper functions
+    const addGuardian = async (name: string, guardianAddress: string) => {
+        return handleTransaction('addGuardian', [name, guardianAddress]);
+    };
+
+    const removeGuardian = async (guardianAddress: string) => {
+        return handleTransaction('removeGuardian', [guardianAddress]);
+    };
+
+    const addBeneficiary = async (
+        name: string,
+        beneficiaryAddress: string,
+        allocationBps: number,
+        vestingType: number,
+        duration: number
+    ) => {
+        return handleTransaction('addBeneficiary', [
             name,
-            address,
+            beneficiaryAddress,
             allocationBps,
             vestingType,
             duration
-        );
-        await tx.wait();
-        console.log("Beneficiary added:", address);
-        return tx;
-    } catch (error) {
-        console.error("Error adding beneficiary:", error);
-        throw error;
-    } finally {
-        setIsLoading(false);
-    }
-};
+        ]);
+    };
 
-const proveLife = async () => {
-    if (!contract) throw new Error("Contract not initialized");
-    setIsLoading(true);
-    try {
-        const tx = await contract.proveLife();
-        await tx.wait();
-        console.log("Life proved");
-        return tx;
-    } catch (error) {
-        console.error("Error proving life:", error);
-        throw error;
-    } finally {
-        setIsLoading(false);
-    }
-};
+    const removeBeneficiary = async (beneficiaryAddress: string) => {
+        return handleTransaction('removeBeneficiary', [beneficiaryAddress]);
+    };
 
-return {
-    contract,
-    isLoading,
-    addGuardian,
-    addBeneficiary,
-    proveLife,
-    contractAddress: CONTRACT_ADDRESS
-};
+    const proveLife = async () => {
+        return handleTransaction('proveLife', []);
+    };
+
+    // Data Fetching
+    const getGuardians = async () => {
+        if (!publicClient) return [];
+        const guardians: any[] = [];
+        let index = 0;
+
+        try {
+            while (true) {
+                try {
+                    // 1. Get address at index
+                    const guardianAddress = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: AfterLifeArtifact.abi,
+                        functionName: 'guardianList',
+                        args: [BigInt(index)],
+                    }) as string;
+
+                    // 2. Get details for this address
+                    const details = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: AfterLifeArtifact.abi,
+                        functionName: 'guardians',
+                        args: [guardianAddress],
+                    }) as any[];
+                    // details structure: [name, wallet, isFixed]
+
+                    guardians.push({
+                        id: guardianAddress,
+                        name: details[0],
+                        address: details[1], // or guardianAddress
+                        isFixed: details[2]
+                    });
+
+                    index++;
+                    // Safety break for MVP
+                    if (index > 20) break;
+                } catch (err) {
+                    // Likely index out of bounds, stop loop
+                    break;
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching guardians:", e);
+        }
+        return guardians;
+    };
+
+    const getBeneficiaries = async () => {
+        if (!publicClient) return [];
+        const beneficiaries: any[] = [];
+        let index = 0;
+
+        try {
+            while (true) {
+                try {
+                    const beneficiaryAddress = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: AfterLifeArtifact.abi,
+                        functionName: 'beneficiaryList',
+                        args: [BigInt(index)],
+                    }) as string;
+
+                    const details = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: AfterLifeArtifact.abi,
+                        functionName: 'beneficiaries',
+                        args: [beneficiaryAddress],
+                    }) as any[];
+                    // Struct: name, wallet, allocation, amountClaimed, vestingType, vestingDuration
+
+                    beneficiaries.push({
+                        id: beneficiaryAddress,
+                        name: details[0],
+                        address: details[1],
+                        allocation: Number(details[2]),
+                        amountClaimed: details[3],
+                        vestingType: details[4] === 0 ? 'linear' : 'cliff', // Enum mapping
+                        vestingDuration: Number(details[5]), // Seconds
+                        createdAt: Date.now() // Mock for UI sort if needed
+                    });
+
+                    index++;
+                    if (index > 20) break;
+                } catch (err) {
+                    break;
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching beneficiaries:", e);
+        }
+        return beneficiaries;
+    };
+
+    const getProtocolState = async () => {
+        if (!publicClient) return null;
+        try {
+            const [owner, lastHeartbeat, inactivityThreshold, isDead] = await Promise.all([
+                publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'owner',
+                }),
+                publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'lastHeartbeat',
+                }),
+                publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'inactivityThreshold',
+                }),
+                publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'isDead',
+                }),
+            ]);
+
+            return {
+                owner: owner as string,
+                lastHeartbeat: Number(lastHeartbeat) * 1000, // Convert to ms for JS
+                inactivityThreshold: Number(inactivityThreshold) * 1000, // Convert to ms
+                isDead: isDead as boolean
+            };
+        } catch (e) {
+            console.error("Error fetching protocol state:", e);
+            return null;
+        }
+    };
+
+    return {
+        isLoading,
+        error,
+        addGuardian,
+        removeGuardian,
+        addBeneficiary,
+        removeBeneficiary,
+        proveLife,
+        getGuardians,
+        getBeneficiaries,
+        getProtocolState,
+        contractAddress: CONTRACT_ADDRESS,
+        publicClient
+    };
 };

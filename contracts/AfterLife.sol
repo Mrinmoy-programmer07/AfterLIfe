@@ -47,7 +47,6 @@ contract AfterLife {
     // --- Modifiers ---
     modifier onlyOwner() {
         require(msg.sender == owner, "Not Owner");
-        require(!isDead, "Protocol is Executing");
         _;
     }
 
@@ -112,6 +111,40 @@ contract AfterLife {
         beneficiaryList.push(_wallet);
         totalAllocation += _allocationBps;
         emit BeneficiaryAdded(_wallet, _allocationBps);
+    }
+
+    function removeGuardian(address _wallet) external onlyOwner {
+        require(guardians[_wallet].wallet != address(0), "Not Found");
+        require(!guardians[_wallet].isFixed, "Fixed");
+
+        delete guardians[_wallet];
+
+        // Remove from list
+        for (uint i = 0; i < guardianList.length; i++) {
+            if (guardianList[i] == _wallet) {
+                guardianList[i] = guardianList[guardianList.length - 1];
+                guardianList.pop();
+                break;
+            }
+        }
+    }
+
+    function removeBeneficiary(address _wallet) external onlyOwner {
+        require(beneficiaries[_wallet].wallet != address(0), "Not Found");
+
+        uint256 allocation = beneficiaries[_wallet].allocation;
+        totalAllocation -= allocation;
+        
+        delete beneficiaries[_wallet];
+
+        // Remove from list
+        for (uint i = 0; i < beneficiaryList.length; i++) {
+            if (beneficiaryList[i] == _wallet) {
+                beneficiaryList[i] = beneficiaryList[beneficiaryList.length - 1];
+                beneficiaryList.pop();
+                break;
+            }
+        }
     }
 
     uint256 public initialVaultBalance; // Balance at time of execution start
