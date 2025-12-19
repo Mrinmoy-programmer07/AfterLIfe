@@ -8,13 +8,6 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      proxy: {
-        '/api/rpc': {
-          target: 'https://sepolia-rollup.arbitrum.io/rpc',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/rpc/, ''),
-        },
-      },
     },
     plugins: [react()],
     define: {

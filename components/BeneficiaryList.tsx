@@ -1,23 +1,24 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Users, Coins, ChevronRight } from 'lucide-react';
+import { Users, Coins, ChevronRight, Trash2 } from 'lucide-react';
 import { Beneficiary } from '../types';
 import { Card, Progress } from './ui/Primitives';
 
 interface BeneficiaryListProps {
     beneficiaries: Beneficiary[];
     onUpdateAllocation?: (address: string, newAllocation: number) => void;
+    onRemove?: (address: string) => void;
 }
 
-const BeneficiaryList: React.FC<BeneficiaryListProps> = ({ beneficiaries, onUpdateAllocation }) => {
+const BeneficiaryList: React.FC<BeneficiaryListProps> = ({ beneficiaries, onUpdateAllocation, onRemove }) => {
     return (
         <Card className="bg-stone-900/40 p-6 h-full backdrop-blur-md border border-stone-800/50">
             <div className="flex items-center gap-2 mb-6 border-b border-stone-800 pb-4">
                 <Users className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-lg font-light text-white tracking-wide">Beneficiaries</h3>
                 <span className={`text-xs ml-auto uppercase tracking-widest px-2 py-1 rounded border ${beneficiaries.reduce((sum, b) => sum + b.allocation, 0) === 100
-                        ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10'
-                        : 'text-amber-400 border-amber-500/20 bg-amber-500/10'
+                    ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10'
+                    : 'text-amber-400 border-amber-500/20 bg-amber-500/10'
                     }`}>
                     Total: {beneficiaries.reduce((sum, b) => sum + b.allocation, 0)}%
                 </span>
@@ -39,9 +40,20 @@ const BeneficiaryList: React.FC<BeneficiaryListProps> = ({ beneficiaries, onUpda
                                 <h4 className="text-stone-200 font-medium">{beneficiary.name}</h4>
                                 <p className="text-xs text-stone-500 font-mono mt-0.5">{beneficiary.address}</p>
                             </div>
-                            <div className="text-right">
-                                <span className="text-xl font-light text-white">{beneficiary.allocation}%</span>
-                                <p className="text-[10px] text-stone-500 uppercase">Share</p>
+                            <div className="flex flex-col items-end gap-2">
+                                <div className="text-right">
+                                    <span className="text-xl font-light text-white">{beneficiary.allocation}%</span>
+                                    <p className="text-[10px] text-stone-500 uppercase">Share</p>
+                                </div>
+                                {onRemove && (
+                                    <button
+                                        onClick={() => onRemove(beneficiary.address)}
+                                        className="p-1.5 text-stone-600 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors z-10"
+                                        title="Remove Beneficiary"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -74,7 +86,7 @@ const BeneficiaryList: React.FC<BeneficiaryListProps> = ({ beneficiaries, onUpda
                             </div>
                         </div>
 
-                        <ChevronRight className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-700 opacity-0 group-hover:opacity-100 group-hover:-translate-x-1 transition-all" />
+                        <ChevronRight className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-700 opacity-0 group-hover:opacity-100 group-hover:-translate-x-1 transition-all pointer-events-none" />
                     </motion.div>
                 ))}
             </div>

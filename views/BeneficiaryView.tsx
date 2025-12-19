@@ -4,7 +4,7 @@ import { Card, Button, Progress, Badge } from '../components/ui/Primitives';
 import { ProtocolContextType, AssetState } from '../types';
 import { Unlock, Briefcase, Clock } from 'lucide-react';
 import { formatDuration } from '../services/mockService';
-import { useWallet } from '../hooks/useWallet';
+import { useAccount } from 'wagmi';
 
 const AssetRow: React.FC<{ asset: AssetState, now: number }> = ({ asset, now }) => {
     const isUnlocked = now >= asset.unlockDate;
@@ -47,7 +47,7 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
     // Since we have Smart Routing, we assume context.role is BENEFICIARY implies a match found.
     // For demo visuals, let's grab the Beneficiary that matches simple heuristic or just the first one if mock.
     // BUT proper way: match address.
-    const { isConnected, address } = useWallet();
+    const { isConnected, address } = useAccount();
     const currentUser = context.beneficiaries.find(b => b.address.toLowerCase() === address?.toLowerCase()) || context.beneficiaries[0];
 
     const totalPot = 182.5; // Mock Total ETH

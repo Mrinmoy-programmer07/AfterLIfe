@@ -2,7 +2,7 @@
 
 ## ✅ Successfully Deployed to Arbitrum Sepolia!
 
-**Contract Address:** `0x584D45746E694Dd11233020c000C0bc00c2bddfA`
+**Contract Address:** `0x3935129b6270998d57E2A092C90987B44310d634`
 
 **Network:** Arbitrum Sepolia Testnet  
 **Chain ID:** 421614  

@@ -1,104 +1,235 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/// @title AfterLife - Multi-Tenant Crypto Will Protocol (Security Hardened + Error Handling Fixed)
+/// @notice Allows multiple users to register their own protocol instances with proper fund isolation
 contract AfterLife {
     
-    // --- State Variables ---
+    // --- Constants ---
+    uint256 public constant MIN_THRESHOLD = 1 days;
+    uint256 public constant MAX_GUARDIANS = 10;
+    uint256 public constant MAX_BENEFICIARIES = 20;
+    uint256 public constant REVIVE_GRACE_PERIOD = 7 days;
 
-    address public owner;
-    uint256 public inactivityThreshold;
-    uint256 public lastHeartbeat;
-    bool public isDead; // "Dead" or "Inactive" state confirmed
+    // --- Structs ---
 
     struct Guardian {
         string name;
         address wallet;
-        bool isFixed; // Cannot be removed easily
+        bool isFixed;
     }
 
     struct Beneficiary {
         string name;
         address wallet;
-        uint256 allocation; // Percentage in Basis Points (10000 = 100%)
+        uint256 allocation;
         uint256 amountClaimed;
         VestingType vestingType;
-        uint256 vestingDuration; // Seconds
+        uint256 vestingDuration;
+    }
+
+    struct Protocol {
+        bool isRegistered;
+        uint256 lastHeartbeat;
+        uint256 inactivityThreshold;
+        bool isDead;
+        uint256 initialVaultBalance;
+        uint256 vestingStartTime;
+        uint256 totalAllocation;
+        uint256 deathDeclarationTime;
     }
 
     enum VestingType { LINEAR, CLIFF }
 
-    mapping(address => Guardian) public guardians;
-    address[] public guardianList;
+    // --- State Variables ---
 
-    mapping(address => Beneficiary) public beneficiaries;
-    address[] public beneficiaryList;
+    mapping(address => Protocol) public protocols;
+    mapping(address => uint256) public ownerBalances;
+    mapping(address => mapping(address => Guardian)) public guardians;
+    mapping(address => address[]) public guardianLists;
+    mapping(address => mapping(address => Beneficiary)) public beneficiaries;
+    mapping(address => address[]) public beneficiaryLists;
 
-    uint256 public totalAllocation;
-    uint256 public vestingStartTime; // Set when inactivity confirmed
+    bool private locked;
+
+    // --- Custom Errors (Gas Efficient) ---
+    error NotRegistered();
+    error AlreadyRegistered();
+    error NotGuardian();
+    error NotBeneficiary();
+    error ProtocolActive();
+    error ProtocolDead();
+    error VestingNotStarted();
+    error GracePeriodActive();
+    error GracePeriodExpired();
+    error ZeroAddress();
+    error EmptyString();
+    error NoReentrancy();
+    error GuardianExists();
+    error TooManyGuardians();
+    error CannotBeSelf();
+    error BeneficiaryExists();
+    error TooManyBeneficiaries();
+    error ZeroAllocation();
+    error AllocationExceeds100Percent();
+    error ZeroDuration();
+    error GuardianNotFound();
+    error FixedGuardian();
+    error BeneficiaryNotFound();
+    error NoValue();
+    error ZeroAmount();
+    error InsufficientBalance();
+    error OwnerStillActive();
+    error AlreadyDead();
+    error NothingToClaim();
+    error VaultInsolvency();
+    error IndexOutOfBounds();
+    error ThresholdTooShort();
+    error UseDepositFunction();
 
     // --- Events ---
-    event Pulse(uint256 timestamp);
-    event InactivityConfirmed(uint256 timestamp);
-    event BeneficiaryAdded(address indexed wallet, uint256 allocation);
-    event GuardianAdded(address indexed wallet);
-    event FundsClaimed(address indexed beneficiary, uint256 amount);
-    event Deprecated(address indexed owner);
+    event ProtocolRegistered(address indexed owner, uint256 threshold);
+    event Pulse(address indexed owner, uint256 timestamp);
+    event InactivityConfirmed(address indexed owner, uint256 timestamp);
+    event ProtocolRevived(address indexed owner, uint256 timestamp);
+    event BeneficiaryAdded(address indexed owner, address indexed wallet, uint256 allocation);
+    event BeneficiaryRemoved(address indexed owner, address indexed wallet);
+    event GuardianAdded(address indexed owner, address indexed wallet);
+    event GuardianRemoved(address indexed owner, address indexed wallet);
+    event GuardianFixedStatusChanged(address indexed owner, address indexed wallet, bool isFixed);
+    event FundsClaimed(address indexed owner, address indexed beneficiary, uint256 amount);
+    event FundsDeposited(address indexed owner, uint256 amount);
+    event FundsWithdrawn(address indexed owner, uint256 amount);
 
     // --- Modifiers ---
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not Owner");
+
+    modifier onlyRegistered() {
+        if (!protocols[msg.sender].isRegistered) revert NotRegistered();
         _;
     }
 
-    modifier onlyGuardian() {
-        require(guardians[msg.sender].wallet != address(0), "Not Guardian");
+    modifier onlyGuardianOf(address _owner) {
+        if (guardians[_owner][msg.sender].wallet == address(0)) revert NotGuardian();
         _;
     }
 
-    modifier onlyWhileExecuting() {
-        require(isDead, "Protocol Active");
-        require(vestingStartTime > 0, "Vesting Not Started");
+    modifier onlyWhileExecuting(address _owner) {
+        Protocol storage p = protocols[_owner];
+        if (!p.isDead) revert ProtocolActive();
+        if (p.vestingStartTime == 0) revert VestingNotStarted();
+        
+        if (block.timestamp <= p.deathDeclarationTime + REVIVE_GRACE_PERIOD) {
+            revert GracePeriodActive();
+        }
         _;
     }
 
-    constructor(uint256 _thresholdSeconds) {
-        owner = msg.sender;
-        lastHeartbeat = block.timestamp;
-        inactivityThreshold = _thresholdSeconds;
+    modifier nonReentrant() {
+        if (locked) revert NoReentrancy();
+        locked = true;
+        _;
+        locked = false;
+    }
+
+    modifier validAddress(address _addr) {
+        if (_addr == address(0)) revert ZeroAddress();
+        _;
+    }
+
+    modifier nonEmptyString(string memory _str) {
+        if (bytes(_str).length == 0) revert EmptyString();
+        _;
+    }
+
+    // --- Registration ---
+
+    function register(uint256 _thresholdSeconds) external {
+        if (protocols[msg.sender].isRegistered) revert AlreadyRegistered();
+        if (_thresholdSeconds < MIN_THRESHOLD) revert ThresholdTooShort();
+
+        protocols[msg.sender] = Protocol({
+            isRegistered: true,
+            lastHeartbeat: block.timestamp,
+            inactivityThreshold: _thresholdSeconds,
+            isDead: false,
+            initialVaultBalance: 0,
+            vestingStartTime: 0,
+            totalAllocation: 0,
+            deathDeclarationTime: 0
+        });
+
+        emit ProtocolRegistered(msg.sender, _thresholdSeconds);
     }
 
     // --- Owner Actions ---
 
-    function proveLife() external onlyOwner {
-        lastHeartbeat = block.timestamp;
-        emit Pulse(block.timestamp);
+    function proveLife() external onlyRegistered {
+        Protocol storage p = protocols[msg.sender];
+        
+        if (p.isDead) {
+            if (block.timestamp > p.deathDeclarationTime + REVIVE_GRACE_PERIOD) {
+                revert GracePeriodExpired();
+            }
+            
+            p.isDead = false;
+            p.vestingStartTime = 0;
+            p.initialVaultBalance = 0;
+            p.deathDeclarationTime = 0;
+            p.lastHeartbeat = block.timestamp;
+            
+            address[] storage beneficiaryList = beneficiaryLists[msg.sender];
+            uint256 length = beneficiaryList.length;
+            for (uint256 i = 0; i < length; i++) {
+                beneficiaries[msg.sender][beneficiaryList[i]].amountClaimed = 0;
+            }
+            
+            emit ProtocolRevived(msg.sender, block.timestamp);
+            return;
+        }
+        
+        p.lastHeartbeat = block.timestamp;
+        emit Pulse(msg.sender, block.timestamp);
     }
 
-    function addGuardian(string memory _name, address _wallet) external onlyOwner {
-        require(guardians[_wallet].wallet == address(0), "Exists");
+    function addGuardian(string memory _name, address _wallet) 
+        external 
+        onlyRegistered 
+        validAddress(_wallet)
+        nonEmptyString(_name)
+    {
+        if (guardians[msg.sender][_wallet].wallet != address(0)) revert GuardianExists();
+        if (guardianLists[msg.sender].length >= MAX_GUARDIANS) revert TooManyGuardians();
+        if (_wallet == msg.sender) revert CannotBeSelf();
         
-        Guardian memory newGuardian = Guardian({
+        guardians[msg.sender][_wallet] = Guardian({
             name: _name,
             wallet: _wallet,
             isFixed: false
         });
-
-        guardians[_wallet] = newGuardian;
-        guardianList.push(_wallet);
-        emit GuardianAdded(_wallet);
+        guardianLists[msg.sender].push(_wallet);
+        
+        emit GuardianAdded(msg.sender, _wallet);
     }
 
     function addBeneficiary(
-        string memory _name, 
-        address _wallet, 
-        uint256 _allocationBps, 
-        VestingType _vestingType, 
+        string memory _name,
+        address _wallet,
+        uint256 _allocationBps,
+        VestingType _vestingType,
         uint256 _duration
-    ) external onlyOwner {
-        require(beneficiaries[_wallet].wallet == address(0), "Exists");
-        require(totalAllocation + _allocationBps <= 10000, "Over 100%");
+    ) 
+        external 
+        onlyRegistered 
+        validAddress(_wallet)
+        nonEmptyString(_name)
+    {
+        if (beneficiaries[msg.sender][_wallet].wallet != address(0)) revert BeneficiaryExists();
+        if (beneficiaryLists[msg.sender].length >= MAX_BENEFICIARIES) revert TooManyBeneficiaries();
+        if (_allocationBps == 0) revert ZeroAllocation();
+        if (protocols[msg.sender].totalAllocation + _allocationBps > 10000) revert AllocationExceeds100Percent();
+        if (_duration == 0) revert ZeroDuration();
 
-        Beneficiary memory newB = Beneficiary({
+        beneficiaries[msg.sender][_wallet] = Beneficiary({
             name: _name,
             wallet: _wallet,
             allocation: _allocationBps,
@@ -106,81 +237,112 @@ contract AfterLife {
             vestingType: _vestingType,
             vestingDuration: _duration
         });
+        beneficiaryLists[msg.sender].push(_wallet);
+        protocols[msg.sender].totalAllocation += _allocationBps;
 
-        beneficiaries[_wallet] = newB;
-        beneficiaryList.push(_wallet);
-        totalAllocation += _allocationBps;
-        emit BeneficiaryAdded(_wallet, _allocationBps);
+        emit BeneficiaryAdded(msg.sender, _wallet, _allocationBps);
     }
 
-    function removeGuardian(address _wallet) external onlyOwner {
-        require(guardians[_wallet].wallet != address(0), "Not Found");
-        require(!guardians[_wallet].isFixed, "Fixed");
+    function setGuardianFixed(address _guardian, bool _fixed) external onlyRegistered {
+        if (guardians[msg.sender][_guardian].wallet == address(0)) revert GuardianNotFound();
+        guardians[msg.sender][_guardian].isFixed = _fixed;
+        emit GuardianFixedStatusChanged(msg.sender, _guardian, _fixed);
+    }
 
-        delete guardians[_wallet];
+    function removeGuardian(address _guardian) external onlyRegistered {
+        if (guardians[msg.sender][_guardian].wallet == address(0)) revert GuardianNotFound();
+        if (guardians[msg.sender][_guardian].isFixed) revert FixedGuardian();
 
-        // Remove from list
-        for (uint i = 0; i < guardianList.length; i++) {
-            if (guardianList[i] == _wallet) {
-                guardianList[i] = guardianList[guardianList.length - 1];
-                guardianList.pop();
+        delete guardians[msg.sender][_guardian];
+
+        address[] storage list = guardianLists[msg.sender];
+        uint256 length = list.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (list[i] == _guardian) {
+                list[i] = list[length - 1];
+                list.pop();
                 break;
             }
         }
+
+        emit GuardianRemoved(msg.sender, _guardian);
     }
 
-    function removeBeneficiary(address _wallet) external onlyOwner {
-        require(beneficiaries[_wallet].wallet != address(0), "Not Found");
+    function removeBeneficiary(address _beneficiary) external onlyRegistered {
+        if (beneficiaries[msg.sender][_beneficiary].wallet == address(0)) revert BeneficiaryNotFound();
 
-        uint256 allocation = beneficiaries[_wallet].allocation;
-        totalAllocation -= allocation;
+        uint256 allocationToRemove = beneficiaries[msg.sender][_beneficiary].allocation;
+        protocols[msg.sender].totalAllocation -= allocationToRemove;
+
+        delete beneficiaries[msg.sender][_beneficiary];
+
+        address[] storage list = beneficiaryLists[msg.sender];
+        uint256 length = list.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (list[i] == _beneficiary) {
+                list[i] = list[length - 1];
+                list.pop();
+                break;
+            }
+        }
+
+        emit BeneficiaryRemoved(msg.sender, _beneficiary);
+    }
+
+    function deposit() external payable onlyRegistered {
+        if (msg.value == 0) revert NoValue();
         
-        delete beneficiaries[_wallet];
-
-        // Remove from list
-        for (uint i = 0; i < beneficiaryList.length; i++) {
-            if (beneficiaryList[i] == _wallet) {
-                beneficiaryList[i] = beneficiaryList[beneficiaryList.length - 1];
-                beneficiaryList.pop();
-                break;
-            }
-        }
+        ownerBalances[msg.sender] += msg.value;
+        emit FundsDeposited(msg.sender, msg.value);
     }
 
-    uint256 public initialVaultBalance; // Balance at time of execution start
+    function withdraw(uint256 _amount) external onlyRegistered nonReentrant {
+        if (protocols[msg.sender].isDead) revert ProtocolDead();
+        if (_amount == 0) revert ZeroAmount();
+        if (ownerBalances[msg.sender] < _amount) revert InsufficientBalance();
+        
+        ownerBalances[msg.sender] -= _amount;
+        
+        // Use call instead of transfer for better gas handling
+        (bool success, ) = payable(msg.sender).call{value: _amount}("");
+        require(success, "Transfer failed");
+        
+        emit FundsWithdrawn(msg.sender, _amount);
+    }
 
     // --- Guardian Actions ---
 
-    function confirmInactivity() external onlyGuardian {
-        require(!isDead, "Already Dead");
-        require(block.timestamp > lastHeartbeat + inactivityThreshold, "Owner Active");
-        
-        isDead = true;
-        vestingStartTime = block.timestamp;
-        initialVaultBalance = address(this).balance; // SNAPSHOT
-        
-        emit InactivityConfirmed(block.timestamp);
+    function confirmInactivity(address _owner) external onlyGuardianOf(_owner) {
+        Protocol storage p = protocols[_owner];
+        if (!p.isRegistered) revert NotRegistered();
+        if (p.isDead) revert AlreadyDead();
+        if (block.timestamp <= p.lastHeartbeat + p.inactivityThreshold) revert OwnerStillActive();
+
+        p.isDead = true;
+        p.vestingStartTime = block.timestamp;
+        p.deathDeclarationTime = block.timestamp;
+        p.initialVaultBalance = ownerBalances[_owner];
+
+        emit InactivityConfirmed(_owner, block.timestamp);
     }
 
     // --- Beneficiary Actions ---
 
-    function claim() external onlyWhileExecuting {
-        Beneficiary storage b = beneficiaries[msg.sender];
-        require(b.wallet == msg.sender, "Not Beneficiary");
+    function claim(address _owner) external nonReentrant onlyWhileExecuting(_owner) {
+        Beneficiary storage b = beneficiaries[_owner][msg.sender];
+        if (b.wallet != msg.sender) revert NotBeneficiary();
 
-        uint256 totalEntitlement = (initialVaultBalance * b.allocation) / 10000;
+        Protocol storage p = protocols[_owner];
+        uint256 totalEntitlement = (p.initialVaultBalance * b.allocation) / 10000;
         uint256 vestedAmount = 0;
 
-        uint256 elapsed = block.timestamp - vestingStartTime;
-        
+        uint256 elapsed = block.timestamp - p.vestingStartTime;
+
         if (b.vestingType == VestingType.CLIFF) {
             if (elapsed >= b.vestingDuration) {
                 vestedAmount = totalEntitlement;
-            } else {
-                vestedAmount = 0;
             }
         } else {
-            // LINEAR
             if (elapsed >= b.vestingDuration) {
                 vestedAmount = totalEntitlement;
             } else {
@@ -193,18 +355,103 @@ contract AfterLife {
             claimable = vestedAmount - b.amountClaimed;
         }
 
-        require(claimable > 0, "Nothing to claim");
-        require(address(this).balance >= claimable, "Vault Insolvency");
+        if (claimable == 0) revert NothingToClaim();
+        if (ownerBalances[_owner] < claimable) revert VaultInsolvency();
 
         b.amountClaimed += claimable;
-        payable(b.wallet).transfer(claimable);
+        ownerBalances[_owner] -= claimable;
         
-        emit FundsClaimed(b.wallet, claimable);
-    }
-    
-    function _calculateAlreadyDistributed() internal view returns (uint256) {
-        // Helper if needed, unused in Snapshot pattern
-        return 0;
-    }
+        // Use call instead of transfer
+        (bool success, ) = payable(b.wallet).call{value: claimable}("");
+        require(success, "Transfer failed");
+
+        emit FundsClaimed(_owner, b.wallet, claimable);
     }
 
+    // --- View Functions ---
+
+    function getOwnerBalance(address _owner) external view returns (uint256) {
+        return ownerBalances[_owner];
+    }
+
+    function getReviveStatus(address _owner) external view returns (bool canRevive, uint256 timeRemaining) {
+        Protocol storage p = protocols[_owner];
+        
+        if (!p.isDead) {
+            return (false, 0);
+        }
+        
+        uint256 graceEndTime = p.deathDeclarationTime + REVIVE_GRACE_PERIOD;
+        
+        if (block.timestamp >= graceEndTime) {
+            return (false, 0);
+        }
+        
+        return (true, graceEndTime - block.timestamp);
+    }
+
+    function getGuardianCount(address _owner) external view returns (uint256) {
+        return guardianLists[_owner].length;
+    }
+
+    function getBeneficiaryCount(address _owner) external view returns (uint256) {
+        return beneficiaryLists[_owner].length;
+    }
+
+    function getGuardianAt(address _owner, uint256 _index) external view returns (address) {
+        if (_index >= guardianLists[_owner].length) revert IndexOutOfBounds();
+        return guardianLists[_owner][_index];
+    }
+
+    function getBeneficiaryAt(address _owner, uint256 _index) external view returns (address) {
+        if (_index >= beneficiaryLists[_owner].length) revert IndexOutOfBounds();
+        return beneficiaryLists[_owner][_index];
+    }
+
+    function isOwner(address _addr) external view returns (bool) {
+        return protocols[_addr].isRegistered;
+    }
+
+    function getClaimableAmount(address _owner, address _beneficiary) 
+        external 
+        view 
+        returns (uint256 claimable, uint256 totalEntitlement, uint256 alreadyClaimed) 
+    {
+        Protocol storage p = protocols[_owner];
+        Beneficiary storage b = beneficiaries[_owner][_beneficiary];
+        
+        if (!p.isDead) revert ProtocolActive();
+        if (b.wallet == address(0)) revert NotBeneficiary();
+        
+        if (block.timestamp <= p.deathDeclarationTime + REVIVE_GRACE_PERIOD) {
+            return (0, 0, 0);
+        }
+        
+        totalEntitlement = (p.initialVaultBalance * b.allocation) / 10000;
+        alreadyClaimed = b.amountClaimed;
+        
+        uint256 elapsed = block.timestamp - p.vestingStartTime;
+        uint256 vestedAmount = 0;
+        
+        if (b.vestingType == VestingType.CLIFF) {
+            if (elapsed >= b.vestingDuration) {
+                vestedAmount = totalEntitlement;
+            }
+        } else {
+            if (elapsed >= b.vestingDuration) {
+                vestedAmount = totalEntitlement;
+            } else {
+                vestedAmount = (totalEntitlement * elapsed) / b.vestingDuration;
+            }
+        }
+        
+        if (vestedAmount > alreadyClaimed) {
+            claimable = vestedAmount - alreadyClaimed;
+        }
+    }
+
+    // --- Receive ETH ---
+    receive() external payable {
+        revert UseDepositFunction();
+    }
+}

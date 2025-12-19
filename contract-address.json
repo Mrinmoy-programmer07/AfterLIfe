@@ -1,5 +1,6 @@
 {
-  "address": "0x1B41eD3F6DdAE9C7534573cC863d1eD114fAC890",
-  "deployedAt": "2025-12-18T19:57:07.389Z",
-  "network": "arbitrumSepolia"
+  "address": "0x3935129b6270998d57E2A092C90987B44310d634",
+  "deployedAt": "2025-12-19T22:55:29+05:30",
+  "network": "arbitrumSepolia",
+  "deployer": "Remix IDE"
 }

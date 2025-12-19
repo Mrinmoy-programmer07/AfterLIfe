@@ -1,12 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { UserRole } from '../types';
-import { Card } from '../components/ui/Primitives';
-import { Shield, Key, Clock, ArrowRight } from 'lucide-react';
+import { Card, Button } from '../components/ui/Primitives';
+import { Shield, Key, Clock, ArrowRight, LogOut } from 'lucide-react';
 
 interface RoleSelectionViewProps {
     onSelectRole: (role: UserRole) => void;
     connectedAddress?: string | null;
+    onDisconnect?: () => void;
 }
 
 const RoleCard: React.FC<{
@@ -39,18 +40,25 @@ const RoleCard: React.FC<{
     </Card>
 );
 
-const RoleSelectionView: React.FC<RoleSelectionViewProps> = ({ onSelectRole, connectedAddress }) => {
+const RoleSelectionView: React.FC<RoleSelectionViewProps> = ({ onSelectRole, connectedAddress, onDisconnect }) => {
     return (
         <motion.div
             className="flex flex-col items-center justify-center min-h-screen p-6 pt-24 relative z-10"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
         >
-            <div className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10">
-                <div className={`w-2 h-2 rounded-full ${connectedAddress ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                <span className="text-xs font-mono text-stone-400">
-                    {connectedAddress ? `${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)}` : 'Connecting...'}
-                </span>
+            <div className="absolute top-6 right-6 flex items-center gap-3">
+                <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10">
+                    <div className={`w-2 h-2 rounded-full ${connectedAddress ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className="text-xs font-mono text-stone-400">
+                        {connectedAddress ? `${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)}` : 'Connecting...'}
+                    </span>
+                </div>
+                {onDisconnect && (
+                    <Button variant="outline" onClick={onDisconnect} className="gap-2 text-xs py-1 px-3">
+                        <LogOut className="w-3 h-3" /> Disconnect
+                    </Button>
+                )}
             </div>
 
             <div className="text-center mb-12 space-y-4">

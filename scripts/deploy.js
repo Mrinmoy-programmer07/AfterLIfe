@@ -1,12 +1,11 @@
 const hre = require("hardhat");
 
 async function main() {
-    const INACTIVITY_THRESHOLD = 30 * 24 * 60 * 60; // 30 days in seconds
-
-    console.log("Deploying AfterLife contract...");
+    // Multi-tenant: No constructor args, users register via register() function
+    console.log("Deploying AfterLife (Multi-Tenant) contract...");
 
     const AfterLife = await hre.ethers.getContractFactory("AfterLife");
-    const afterLife = await AfterLife.deploy(INACTIVITY_THRESHOLD);
+    const afterLife = await AfterLife.deploy();
 
     await afterLife.waitForDeployment();
 

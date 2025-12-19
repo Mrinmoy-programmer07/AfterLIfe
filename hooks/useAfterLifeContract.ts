@@ -1,63 +1,82 @@
 import { useState } from 'react';
-import { useAccount, useWriteContract, usePublicClient, useSwitchChain } from 'wagmi';
+import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 
-// Import the compiled contract ABI
 // @ts-ignore - JSON import
 import AfterLifeArtifact from '../artifacts/contracts/AfterLife.sol/AfterLife.json';
 
-// Deployed on Arbitrum Sepolia
-const CONTRACT_ADDRESS = "0x1B41eD3F6DdAE9C7534573cC863d1eD114fAC890";
+// Multi-tenant contract on Arbitrum Sepolia
+const CONTRACT_ADDRESS = "0x3935129b6270998d57E2A092C90987B44310d634";
 
 export const useAfterLifeContract = () => {
-    const { isConnected, chain } = useAccount();
-    const { switchChainAsync } = useSwitchChain();
+    const { isConnected, chain, address: userAddress } = useAccount();
     const { writeContractAsync } = useWriteContract();
     const publicClient = usePublicClient();
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const validateNetwork = async () => {
+    const validateNetwork = () => {
         if (!isConnected) throw new Error("Wallet not connected");
-        if (chain?.id !== 421614) {
-            try {
-                await switchChainAsync({ chainId: 421614 });
-            } catch (e) {
-                throw new Error("Please switch MetaMask to Arbitrum Sepolia (Chain ID: 421614)");
-            }
-        }
+        if (chain?.id !== 421614) throw new Error("Please switch MetaMask to Arbitrum Sepolia (Chain ID: 421614)");
     };
 
     const handleTransaction = async (functionName: string, args: any[]) => {
         setIsLoading(true);
         setError(null);
         try {
-            await validateNetwork();
+            validateNetwork();
 
             console.log("-------------------------------------------");
             console.log(`Sending transaction: ${functionName}`);
             console.log("Args:", args);
             console.log("Contract:", CONTRACT_ADDRESS);
-            // @ts-ignore
-            console.log("Sender:", isConnected ? chain.id : "Not Connected");
             console.log("-------------------------------------------");
 
-            const hash = await writeContractAsync({
-                address: CONTRACT_ADDRESS,
-                abi: AfterLifeArtifact.abi,
-                functionName,
-                args,
-            });
+            let hash;
+
+            // Diagnostic: Try to simulate the call first to catch reverts explicitly
+            if (publicClient && userAddress) {
+                try {
+                    const { request } = await publicClient.simulateContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: AfterLifeArtifact.abi,
+                        functionName,
+                        args,
+                        account: userAddress,
+                        gas: BigInt(1000000),
+                    });
+                    console.log("Simulation successful!", request);
+
+                    // Use the simulated request to write - guarantees same parameters & gas
+                    hash = await writeContractAsync(request);
+                } catch (simError: any) {
+                    console.error("Simulation Failed:", simError);
+                    throw new Error(`Simulation Failed: ${simError.shortMessage || simError.message}`);
+                }
+            } else {
+                // Fallback if no public client (shouldn't happen given setup)
+                hash = await writeContractAsync({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName,
+                    args,
+                    gas: BigInt(1000000),
+                });
+            }
 
             console.log("Transaction sent! Hash:", hash);
 
-            // Wait for confirmation
             if (publicClient) {
                 const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+                if (receipt.status === 'reverted') {
+                    throw new Error("Transaction reverted on-chain");
+                }
+
                 console.log("Transaction confirmed:", receipt.transactionHash);
                 return receipt;
             } else {
-                return { hash }; // Fallback if public client missing
+                return { hash };
             }
 
         } catch (err: any) {
@@ -70,13 +89,18 @@ export const useAfterLifeContract = () => {
         }
     };
 
-    // Helper functions
-    const addGuardian = async (name: string, guardianAddress: string) => {
-        return handleTransaction('addGuardian', [name, guardianAddress]);
+    // --- Owner Functions ---
+
+    const register = async (thresholdSeconds: number) => {
+        return handleTransaction('register', [thresholdSeconds]);
     };
 
-    const removeGuardian = async (guardianAddress: string) => {
-        return handleTransaction('removeGuardian', [guardianAddress]);
+    const proveLife = async () => {
+        return handleTransaction('proveLife', []);
+    };
+
+    const addGuardian = async (name: string, guardianAddress: string) => {
+        return handleTransaction('addGuardian', [name, guardianAddress]);
     };
 
     const addBeneficiary = async (
@@ -95,138 +119,72 @@ export const useAfterLifeContract = () => {
         ]);
     };
 
+    const removeGuardian = async (guardianAddress: string) => {
+        return handleTransaction('removeGuardian', [guardianAddress]);
+    };
+
     const removeBeneficiary = async (beneficiaryAddress: string) => {
         return handleTransaction('removeBeneficiary', [beneficiaryAddress]);
     };
 
-    const proveLife = async () => {
-        return handleTransaction('proveLife', []);
-    };
-
-    // Data Fetching
-    const getGuardians = async () => {
-        if (!publicClient) return [];
-        const guardians: any[] = [];
-        let index = 0;
-
+    const deposit = async (valueInWei: bigint) => {
+        setIsLoading(true);
         try {
-            while (true) {
-                try {
-                    // 1. Get address at index
-                    const guardianAddress = await publicClient.readContract({
-                        address: CONTRACT_ADDRESS,
-                        abi: AfterLifeArtifact.abi,
-                        functionName: 'guardianList',
-                        args: [BigInt(index)],
-                    }) as string;
-
-                    // 2. Get details for this address
-                    const details = await publicClient.readContract({
-                        address: CONTRACT_ADDRESS,
-                        abi: AfterLifeArtifact.abi,
-                        functionName: 'guardians',
-                        args: [guardianAddress],
-                    }) as any[];
-                    // details structure: [name, wallet, isFixed]
-
-                    guardians.push({
-                        id: guardianAddress,
-                        name: details[0],
-                        address: details[1], // or guardianAddress
-                        isFixed: details[2]
-                    });
-
-                    index++;
-                    // Safety break for MVP
-                    if (index > 20) break;
-                } catch (err) {
-                    // Likely index out of bounds, stop loop
-                    break;
-                }
+            validateNetwork();
+            const hash = await writeContractAsync({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'deposit',
+                args: [],
+                value: valueInWei,
+                gas: BigInt(100000),
+            });
+            if (publicClient) {
+                return await publicClient.waitForTransactionReceipt({ hash });
             }
-        } catch (e) {
-            console.error("Error fetching guardians:", e);
+            return { hash };
+        } finally {
+            setIsLoading(false);
         }
-        return guardians;
     };
 
-    const getBeneficiaries = async () => {
-        if (!publicClient) return [];
-        const beneficiaries: any[] = [];
-        let index = 0;
+    // --- Guardian Functions ---
 
-        try {
-            while (true) {
-                try {
-                    const beneficiaryAddress = await publicClient.readContract({
-                        address: CONTRACT_ADDRESS,
-                        abi: AfterLifeArtifact.abi,
-                        functionName: 'beneficiaryList',
-                        args: [BigInt(index)],
-                    }) as string;
-
-                    const details = await publicClient.readContract({
-                        address: CONTRACT_ADDRESS,
-                        abi: AfterLifeArtifact.abi,
-                        functionName: 'beneficiaries',
-                        args: [beneficiaryAddress],
-                    }) as any[];
-                    // Struct: name, wallet, allocation, amountClaimed, vestingType, vestingDuration
-
-                    beneficiaries.push({
-                        id: beneficiaryAddress,
-                        name: details[0],
-                        address: details[1],
-                        allocation: Number(details[2]),
-                        amountClaimed: details[3],
-                        vestingType: details[4] === 0 ? 'linear' : 'cliff', // Enum mapping
-                        vestingDuration: Number(details[5]), // Seconds
-                        createdAt: Date.now() // Mock for UI sort if needed
-                    });
-
-                    index++;
-                    if (index > 20) break;
-                } catch (err) {
-                    break;
-                }
-            }
-        } catch (e) {
-            console.error("Error fetching beneficiaries:", e);
-        }
-        return beneficiaries;
+    const confirmInactivity = async (ownerAddress: string) => {
+        return handleTransaction('confirmInactivity', [ownerAddress]);
     };
 
-    const getProtocolState = async () => {
+    // --- Beneficiary Functions ---
+
+    const claim = async (ownerAddress: string) => {
+        return handleTransaction('claim', [ownerAddress]);
+    };
+
+    // --- Data Fetching ---
+
+    const getProtocolState = async (ownerAddress?: string) => {
         if (!publicClient) return null;
+        const targetOwner = ownerAddress || userAddress;
+        if (!targetOwner) return null;
+
         try {
-            const [owner, lastHeartbeat, inactivityThreshold, isDead] = await Promise.all([
-                publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
-                    abi: AfterLifeArtifact.abi,
-                    functionName: 'owner',
-                }),
-                publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
-                    abi: AfterLifeArtifact.abi,
-                    functionName: 'lastHeartbeat',
-                }),
-                publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
-                    abi: AfterLifeArtifact.abi,
-                    functionName: 'inactivityThreshold',
-                }),
-                publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
-                    abi: AfterLifeArtifact.abi,
-                    functionName: 'isDead',
-                }),
-            ]);
+            const protocol = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'protocols',
+                args: [targetOwner],
+                account: userAddress,
+            }) as any;
 
             return {
-                owner: owner as string,
-                lastHeartbeat: Number(lastHeartbeat) * 1000, // Convert to ms for JS
-                inactivityThreshold: Number(inactivityThreshold) * 1000, // Convert to ms
-                isDead: isDead as boolean
+                isRegistered: protocol[0] as boolean,
+                lastHeartbeat: Number(protocol[1]) * 1000,
+                inactivityThreshold: Number(protocol[2]) * 1000,
+                isDead: protocol[3] as boolean,
+                initialVaultBalance: protocol[4],
+                vestingStartTime: Number(protocol[5]) * 1000,
+                totalAllocation: Number(protocol[6]),
+                deathDeclarationTime: Number(protocol[7]) * 1000,
             };
         } catch (e) {
             console.error("Error fetching protocol state:", e);
@@ -234,18 +192,143 @@ export const useAfterLifeContract = () => {
         }
     };
 
+    const getGuardians = async (ownerAddress?: string) => {
+        if (!publicClient) return [];
+        const targetOwner = ownerAddress || userAddress;
+        if (!targetOwner) return [];
+
+        try {
+            const count = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'getGuardianCount',
+                args: [targetOwner],
+                account: userAddress,
+            }) as bigint;
+
+            const guardians: any[] = [];
+            for (let i = 0; i < Number(count); i++) {
+                const guardianAddr = await publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'getGuardianAt',
+                    args: [targetOwner, BigInt(i)],
+                    account: userAddress,
+                }) as string;
+
+                const details = await publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'guardians',
+                    args: [targetOwner, guardianAddr],
+                    account: userAddress,
+                }) as any[];
+
+                guardians.push({
+                    id: guardianAddr,
+                    name: details[0],
+                    address: details[1],
+                    isFixed: details[2]
+                });
+            }
+            return guardians;
+        } catch (e) {
+            console.error("Error fetching guardians:", e);
+            return [];
+        }
+    };
+
+    const getBeneficiaries = async (ownerAddress?: string) => {
+        if (!publicClient) return [];
+        const targetOwner = ownerAddress || userAddress;
+        if (!targetOwner) return [];
+
+        try {
+            const count = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'getBeneficiaryCount',
+                args: [targetOwner],
+                account: userAddress,
+            }) as bigint;
+
+            const beneficiaries: any[] = [];
+            for (let i = 0; i < Number(count); i++) {
+                const benAddr = await publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'getBeneficiaryAt',
+                    args: [targetOwner, BigInt(i)],
+                    account: userAddress,
+                }) as string;
+
+                const details = await publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName: 'beneficiaries',
+                    args: [targetOwner, benAddr],
+                    account: userAddress,
+                }) as any[];
+
+                beneficiaries.push({
+                    id: benAddr,
+                    name: details[0],
+                    address: details[1],
+                    allocation: Number(details[2]),
+                    amountClaimed: details[3],
+                    vestingType: details[4] === 0 ? 'linear' : 'cliff',
+                    vestingDuration: Number(details[5]),
+                });
+            }
+            return beneficiaries;
+        } catch (e) {
+            console.error("Error fetching beneficiaries:", e);
+            return [];
+        }
+    };
+
+    const isOwner = async (address?: string) => {
+        if (!publicClient) return false;
+        const targetAddress = address || userAddress;
+        if (!targetAddress) return false;
+
+        try {
+            const result = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'isOwner',
+                args: [targetAddress],
+                account: userAddress,
+            });
+            return result as boolean;
+        } catch (e) {
+            return false;
+        }
+    };
+
     return {
         isLoading,
         error,
-        addGuardian,
-        removeGuardian,
-        addBeneficiary,
-        removeBeneficiary,
+        // Owner functions
+        register,
         proveLife,
+        addGuardian,
+        addBeneficiary,
+        removeGuardian,
+        removeBeneficiary,
+        deposit,
+        // Guardian functions
+        confirmInactivity,
+        // Beneficiary functions
+        claim,
+        // Read functions
+        getProtocolState,
         getGuardians,
         getBeneficiaries,
-        getProtocolState,
+        isOwner,
+        // Misc
         contractAddress: CONTRACT_ADDRESS,
-        publicClient
+        publicClient,
+        userAddress
     };
 };

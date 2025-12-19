@@ -25,8 +25,8 @@ const App: React.FC = () => {
   const [elapsedTime, setElapsedTime] = useState(0);
 
   // Entity State
-  const [guardians, setGuardians] = useState<Guardian[]>([]);
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
+  const [guardians, setGuardians] = useState<Guardian[]>(INITIAL_GUARDIANS);
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(INITIAL_BENEFICIARIES);
 
   // Event Log State
   const [events, setEvents] = useState<ProtocolEvent[]>([]);
@@ -217,48 +217,61 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isConnected) {
       const syncData = async () => {
-        // 1. Fetch Entities
-        const _guardians = await getGuardians();
-        if (_guardians.length > 0) {
-          // @ts-ignore
-          setGuardians(_guardians.map(g => ({ ...g, joinedAt: Date.now() })));
-        }
+        try {
+          // 1. Fetch Entities
+          const _guardians = await getGuardians();
+          // Always update state (even if empty) to clear mock data on connection
+          setGuardians(_guardians.map(g => ({
+            name: g.name,
+            address: g.address,
+            isConfirmed: true, // If they are in the list, they are confirmed
+            lastActive: Date.now() // Approximation
+          })));
 
-        const _beneficiaries = await getBeneficiaries();
-        if (_beneficiaries.length > 0) {
-          // @ts-ignore
-          setBeneficiaries(_beneficiaries);
-        }
+          const _beneficiaries = await getBeneficiaries();
+          setBeneficiaries(_beneficiaries.map(b => ({
+            name: b.name,
+            address: b.address,
+            allocation: b.allocation / 100, // Convert BPS to %
+            amountClaimed: b.amountClaimed.toString(),
+            vestingType: b.vestingType.toUpperCase() as any,
+            vestingDuration: b.vestingDuration
+          })));
 
-        // 2. Fetch Protocol State (Heartbeat, etc)
-        const protocolState = await getProtocolState();
-        if (protocolState) {
-          setLastHeartbeat(protocolState.lastHeartbeat);
-          // Check if dead
-          if (protocolState.isDead) {
-            setState(ProtocolState.EXECUTING);
-          } else {
-            // Calculate local state based on heartbeat
-            const now = Date.now();
-            const elapsed = now - protocolState.lastHeartbeat;
-            if (elapsed > protocolState.inactivityThreshold) {
-              setState(ProtocolState.PENDING);
-            } else if (elapsed > protocolState.inactivityThreshold * 0.7) {
-              setState(ProtocolState.WARNING);
+          // 2. Fetch Protocol State (Heartbeat, etc)
+          const protocolState = await getProtocolState();
+          if (protocolState) {
+            setLastHeartbeat(protocolState.lastHeartbeat);
+            // Check if dead
+            if (protocolState.isDead) {
+              setState(ProtocolState.EXECUTING);
             } else {
-              setState(ProtocolState.ACTIVE);
+              // Calculate local state based on heartbeat
+              const now = Date.now();
+              const elapsed = now - protocolState.lastHeartbeat;
+              const threshold = protocolState.inactivityThreshold;
+
+              if (elapsed > threshold) {
+                setState(ProtocolState.PENDING);
+              } else if (elapsed > threshold * 0.7) {
+                setState(ProtocolState.WARNING);
+              } else {
+                setState(ProtocolState.ACTIVE);
+              }
             }
+            addEvent(`Synced Status. Heartbeat: ${new Date(protocolState.lastHeartbeat).toLocaleTimeString()}`, 'INFO');
           }
-          addEvent(`Synced Protocol State. Heartbeat: ${new Date(protocolState.lastHeartbeat).toLocaleTimeString()}`, 'INFO');
+        } catch (err) {
+          console.error("Sync Failed:", err);
         }
       };
       syncData();
 
-      // Poll for heartbeat updates every 30s
-      const poll = setInterval(syncData, 30000);
+      // Poll for updates every 15s to keep UI fresh
+      const poll = setInterval(syncData, 15000);
       return () => clearInterval(poll);
     }
-  }, [isConnected]);
+  }, [isConnected, address]);
 
   // Auto-Route removed. We now wait for user selection.
 
@@ -287,10 +300,36 @@ const App: React.FC = () => {
       }
     }
     else if (selectedRole === UserRole.OWNER) {
-      // For Demo/Dev: We allow the first user or anyone to be Owner to facilitate testing.
-      // In Prod: Check against owner address.
+      // Multi-tenant: Check if this wallet is registered as an owner
+      checkOwnerRegistration(currentAddr);
+    }
+  };
+
+  // Multi-tenant owner registration check
+  const { isOwner, register } = useAfterLifeContract();
+
+  const checkOwnerRegistration = async (walletAddress: string) => {
+    const registered = await isOwner(walletAddress);
+    if (registered) {
       setRole(UserRole.OWNER);
-      addEvent(`Owner Dashboard accessed by ${currentAddr.slice(0, 6)}...`, 'INFO');
+      addEvent(`Owner Dashboard accessed by ${walletAddress.slice(0, 6)}...`, 'INFO');
+    } else {
+      // Prompt to register
+      const shouldRegister = window.confirm(
+        "You are not registered as a protocol owner yet. Would you like to register now?\n\n" +
+        "This will create your own AfterLife protocol instance with a 30-day inactivity threshold."
+      );
+      if (shouldRegister) {
+        try {
+          addEvent('Registering new protocol owner...', 'INFO');
+          await register(30 * 24 * 60 * 60); // 30 days in seconds
+          setRole(UserRole.OWNER);
+          addEvent(`Successfully registered! Welcome, ${walletAddress.slice(0, 6)}...`, 'INFO');
+        } catch (err: any) {
+          addEvent(`Registration failed: ${err.message}`, 'WARNING');
+          alert("Registration failed. Please try again.");
+        }
+      }
     }
   };
 
@@ -301,7 +340,7 @@ const App: React.FC = () => {
 
     // If connected but no role selected/detected, show Selection View
     if (role === UserRole.NONE) {
-      return <RoleSelectionView onSelectRole={verifyAndSetRole} connectedAddress={address} />;
+      return <RoleSelectionView onSelectRole={verifyAndSetRole} connectedAddress={address} onDisconnect={disconnect} />;
     }
 
     switch (role) {

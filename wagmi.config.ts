@@ -8,6 +8,13 @@ export const config = createConfig({
         injected(), // This works with MetaMask without needing @metamask/sdk
     ],
     transports: {
-        [arbitrumSepolia.id]: http("/api/rpc"),
+        [arbitrumSepolia.id]: fallback([
+            // Primary stable RPC
+            http("https://arbitrum-sepolia.rpc.thirdweb.com"),
+            // Fallbacks
+            http("https://arbitrum-sepolia.drpc.org"),
+            http("https://arbitrum-sepolia-rpc.publicnode.com"),
+            http("https://sepolia-rollup.arbitrum.io/rpc"),
+        ]),
     },
 })

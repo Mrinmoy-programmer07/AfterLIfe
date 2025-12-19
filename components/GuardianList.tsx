@@ -1,14 +1,15 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, Clock, Shield, AlertCircle } from 'lucide-react';
+import { CheckCircle, Clock, Shield, AlertCircle, Trash2 } from 'lucide-react';
 import { Guardian } from '../types';
-import { Card, Badge } from './ui/Primitives';
+import { Card, Badge, Button } from './ui/Primitives';
 
 interface GuardianListProps {
     guardians: Guardian[];
+    onRemove?: (address: string) => void;
 }
 
-const GuardianList: React.FC<GuardianListProps> = ({ guardians }) => {
+const GuardianList: React.FC<GuardianListProps> = ({ guardians, onRemove }) => {
     return (
         <Card className="bg-stone-900/40 p-6 h-full backdrop-blur-md border border-stone-800/50">
             <div className="flex items-center gap-2 mb-6 border-b border-stone-800 pb-4">
@@ -39,22 +40,34 @@ const GuardianList: React.FC<GuardianListProps> = ({ guardians }) => {
                             </div>
                         </div>
 
-                        <div className="flex flex-col items-end gap-1">
-                            {guardian.isConfirmed ? (
-                                <span className="flex items-center gap-1 text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full border border-amber-500/20">
-                                    <AlertCircle className="w-3 h-3" />
-                                    Confirmed Inactivity
-                                </span>
-                            ) : (
-                                <span className="flex items-center gap-1 text-xs text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
-                                    <CheckCircle className="w-3 h-3" />
-                                    Monitoring
-                                </span>
-                            )}
-                            <div className="text-[10px] text-stone-600 flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                Last active: {guardian.lastActive ? new Date(guardian.lastActive).toLocaleDateString() : 'Never'}
+                        <div className="flex items-center gap-3">
+                            <div className="flex flex-col items-end gap-1">
+                                {guardian.isConfirmed ? (
+                                    <span className="flex items-center gap-1 text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full border border-amber-500/20">
+                                        <AlertCircle className="w-3 h-3" />
+                                        Confirmed Inactivity
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-1 text-xs text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Monitoring
+                                    </span>
+                                )}
+                                <div className="text-[10px] text-stone-600 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    Last active: {guardian.lastActive ? new Date(guardian.lastActive).toLocaleDateString() : 'Never'}
+                                </div>
                             </div>
+
+                            {onRemove && (
+                                <button
+                                    onClick={() => onRemove(guardian.address)}
+                                    className="p-2 text-stone-600 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors"
+                                    title="Remove Guardian"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
                     </motion.div>
                 ))}
