@@ -9,12 +9,11 @@ export const config = createConfig({
     ],
     transports: {
         [arbitrumSepolia.id]: fallback([
-            // Primary stable RPC
-            http("https://arbitrum-sepolia.rpc.thirdweb.com"),
-            // Fallbacks
+            // More resilient public nodes
             http("https://arbitrum-sepolia.drpc.org"),
             http("https://arbitrum-sepolia-rpc.publicnode.com"),
             http("https://sepolia-rollup.arbitrum.io/rpc"),
+            http("https://arbitrum-sepolia.rpc.thirdweb.com"),
         ]),
     },
 })

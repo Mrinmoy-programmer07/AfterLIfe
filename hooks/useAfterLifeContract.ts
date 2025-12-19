@@ -34,7 +34,8 @@ export const useAfterLifeContract = () => {
 
             let hash;
 
-            // Diagnostic: Try to simulate the call first to catch reverts explicitly
+            // Optional Simulation: Try to catch logic reverts, but skip if RPC is being difficult
+            let simulatedRequest;
             if (publicClient && userAddress) {
                 try {
                     const { request } = await publicClient.simulateContract({
@@ -45,23 +46,34 @@ export const useAfterLifeContract = () => {
                         account: userAddress,
                         gas: BigInt(1000000),
                     });
-                    console.log("Simulation successful!", request);
-
-                    // Use the simulated request to write - guarantees same parameters & gas
-                    hash = await writeContractAsync(request);
+                    simulatedRequest = request;
+                    console.log("Simulation successful!");
                 } catch (simError: any) {
-                    console.error("Simulation Failed:", simError);
-                    throw new Error(`Simulation Failed: ${simError.shortMessage || simError.message}`);
+                    const isRateLimit = simError.message?.toLowerCase().includes('rate limit') ||
+                        simError.details?.toLowerCase().includes('rate limit');
+
+                    if (isRateLimit) {
+                        console.warn("Simulation skipped due to rate limiting. Attempting direct write...");
+                    } else {
+                        console.error("Simulation Logic Error:", simError);
+                        throw new Error(`Simulation Failed: ${simError.shortMessage || simError.message}`);
+                    }
                 }
+            }
+
+            // Execute Transaction
+            if (simulatedRequest) {
+                hash = await writeContractAsync(simulatedRequest);
             } else {
-                // Fallback if no public client (shouldn't happen given setup)
                 hash = await writeContractAsync({
                     address: CONTRACT_ADDRESS,
                     abi: AfterLifeArtifact.abi,
                     functionName,
                     args,
+                    account: userAddress,
+                    chain: chain || undefined,
                     gas: BigInt(1000000),
-                });
+                } as any);
             }
 
             console.log("Transaction sent! Hash:", hash);
@@ -137,8 +149,10 @@ export const useAfterLifeContract = () => {
                 functionName: 'deposit',
                 args: [],
                 value: valueInWei,
+                account: userAddress,
+                chain: chain || undefined,
                 gas: BigInt(100000),
-            });
+            } as any);
             if (publicClient) {
                 return await publicClient.waitForTransactionReceipt({ hash });
             }
@@ -174,7 +188,7 @@ export const useAfterLifeContract = () => {
                 functionName: 'protocols',
                 args: [targetOwner],
                 account: userAddress,
-            }) as any;
+            } as any) as any;
 
             return {
                 isRegistered: protocol[0] as boolean,
@@ -204,7 +218,7 @@ export const useAfterLifeContract = () => {
                 functionName: 'getGuardianCount',
                 args: [targetOwner],
                 account: userAddress,
-            }) as bigint;
+            } as any) as bigint;
 
             const guardians: any[] = [];
             for (let i = 0; i < Number(count); i++) {
@@ -214,7 +228,7 @@ export const useAfterLifeContract = () => {
                     functionName: 'getGuardianAt',
                     args: [targetOwner, BigInt(i)],
                     account: userAddress,
-                }) as string;
+                } as any) as string;
 
                 const details = await publicClient.readContract({
                     address: CONTRACT_ADDRESS,
@@ -222,7 +236,7 @@ export const useAfterLifeContract = () => {
                     functionName: 'guardians',
                     args: [targetOwner, guardianAddr],
                     account: userAddress,
-                }) as any[];
+                } as any) as any[];
 
                 guardians.push({
                     id: guardianAddr,
@@ -250,7 +264,7 @@ export const useAfterLifeContract = () => {
                 functionName: 'getBeneficiaryCount',
                 args: [targetOwner],
                 account: userAddress,
-            }) as bigint;
+            } as any) as bigint;
 
             const beneficiaries: any[] = [];
             for (let i = 0; i < Number(count); i++) {
@@ -260,7 +274,7 @@ export const useAfterLifeContract = () => {
                     functionName: 'getBeneficiaryAt',
                     args: [targetOwner, BigInt(i)],
                     account: userAddress,
-                }) as string;
+                } as any) as string;
 
                 const details = await publicClient.readContract({
                     address: CONTRACT_ADDRESS,
@@ -268,7 +282,7 @@ export const useAfterLifeContract = () => {
                     functionName: 'beneficiaries',
                     args: [targetOwner, benAddr],
                     account: userAddress,
-                }) as any[];
+                } as any) as any[];
 
                 beneficiaries.push({
                     id: benAddr,
@@ -299,7 +313,7 @@ export const useAfterLifeContract = () => {
                 functionName: 'isOwner',
                 args: [targetAddress],
                 account: userAddress,
-            });
+            } as any);
             return result as boolean;
         } catch (e) {
             return false;
