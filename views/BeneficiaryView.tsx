@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Card, Button, Progress, Badge } from '../components/ui/Primitives';
-import { ProtocolContextType, AssetState } from '../types';
+import { ProtocolContextType, AssetState, ProtocolState } from '../types';
 import { Unlock, Briefcase, Clock } from 'lucide-react';
 import { formatDuration } from '../services/mockService';
 import { useAccount } from 'wagmi';
@@ -47,19 +47,30 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
     // Since we have Smart Routing, we assume context.role is BENEFICIARY implies a match found.
     // For demo visuals, let's grab the Beneficiary that matches simple heuristic or just the first one if mock.
     // BUT proper way: match address.
-    const { isConnected, address } = useAccount();
-    const currentUser = context.beneficiaries.find(b => b.address.toLowerCase() === address?.toLowerCase()) || context.beneficiaries[0];
+    // Find current user's beneficiary record
+    const { address } = useAccount();
+    const currentUser = context.beneficiaries.find(b => b.address.toLowerCase() === address?.toLowerCase());
 
-    const totalPot = 182.5; // Mock Total ETH
-    const userShare = (totalPot * (currentUser?.allocation || 0)) / 100;
+    // REAL CALCULATIONS
+    // 1. Target Balance (Snapshot if dead, Live if active)
+    const effectiveVaultBalance = context.state === ProtocolState.EXECUTING ? context.vaultBalance : context.currentVaultBalance;
+    const vaultEth = Number(effectiveVaultBalance) / 1e18;
 
-    const vestedAmount = (userShare * context.vestingProgress) / 100;
-    const claimedAmount = parseFloat(currentUser?.amountClaimed || '0');
-    const claimableNow = Math.max(0, vestedAmount - claimedAmount);
-    const lockedAmount = userShare - vestedAmount;
+    // 2. My Total Share (allocation % of vault)
+    const userShare = (vaultEth * (currentUser?.allocation || 0)) / 100;
+
+    // 3. Claimed so far from contract
+    const claimedEth = Number(currentUser?.amountClaimed || 0) / 1e18;
+
+    // 4. Vested amount based on protocol progress (0 if not executing)
+    const vestedEth = context.state === ProtocolState.EXECUTING ? (userShare * context.vestingProgress) / 100 : 0;
+
+    // 5. Claimable right now
+    const claimableEth = Math.max(0, vestedEth - claimedEth);
+    const lockedEth = userShare - vestedEth;
 
     const handleClaim = () => {
-        if (currentUser && claimableNow > 0) {
+        if (currentUser && claimableEth > 0) {
             context.claimBeneficiaryShare(currentUser.address);
         }
     };
@@ -70,9 +81,22 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
         >
-            <header className="absolute top-8 left-8 flex items-center gap-3">
-                <Badge variant="neutral">Beneficiary</Badge>
-                <span className="text-sm text-secondary font-mono tracking-wider">PROGRESSIVE VESTING</span>
+            <header className="absolute top-8 left-8 flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                    <Badge variant="neutral">Beneficiary</Badge>
+                    <span className="text-sm text-secondary font-mono tracking-wider text-white/70">INSTANCE: {context.ownerAddress.slice(0, 6)}...{context.ownerAddress.slice(-4)}</span>
+                </div>
+                <div className="flex gap-4 pl-1">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] text-stone-500 uppercase tracking-tighter">My Wallet</span>
+                        <span className="text-xs text-white font-mono">{Number(context.walletBalance).toFixed(4)} ETH</span>
+                    </div>
+                    <div className="w-[1px] h-6 bg-white/10 my-auto" />
+                    <div className="flex flex-col">
+                        <span className="text-[10px] text-indigo-500 uppercase tracking-tighter">Instance Vault</span>
+                        <span className="text-xs text-indigo-400 font-mono">{(Number(context.currentVaultBalance) / 1e18).toFixed(4)} ETH</span>
+                    </div>
+                </div>
             </header>
 
             <main className="w-full max-w-4xl grid grid-cols-1 lg:col-span-3 gap-8 pt-16">
@@ -94,23 +118,23 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
                                 <div className="text-center w-1/2 border-r border-white/5">
                                     <div className="text-xs text-stone-500 uppercase">Claimable</div>
                                     <div className="text-lg text-emerald-400 font-medium">
-                                        {claimableNow.toFixed(4)} ETH
+                                        {currentUser ? claimableEth.toFixed(4) : '0.0000'} ETH
                                     </div>
                                 </div>
                                 <div className="text-center w-1/2">
                                     <div className="text-xs text-stone-500 uppercase">Locked</div>
                                     <div className="text-lg text-stone-300 font-medium">
-                                        {lockedAmount.toFixed(2)} ETH
+                                        {currentUser ? lockedEth.toFixed(2) : '0.00'} ETH
                                     </div>
                                 </div>
                             </div>
 
                             <Button
                                 onClick={handleClaim}
-                                disabled={claimableNow <= 0}
-                                className={`w-full mt-4 ${claimableNow > 0 ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'opacity-50 cursor-not-allowed'}`}
+                                disabled={!currentUser || claimableEth <= 0}
+                                className={`w-full mt-4 ${currentUser && claimableEth > 0 ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'opacity-50 cursor-not-allowed'}`}
                             >
-                                {claimableNow > 0 ? 'Claim Funds' : 'Pending Vesting'}
+                                {!currentUser ? 'Access Denied' : claimableEth > 0 ? 'Claim Funds' : 'Pending Vesting'}
                             </Button>
                         </div>
                     </Card>

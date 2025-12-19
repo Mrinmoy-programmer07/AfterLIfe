@@ -16,27 +16,42 @@ export const useAfterLifeContract = () => {
     const [error, setError] = useState<string | null>(null);
 
     const validateNetwork = () => {
-        if (!isConnected) throw new Error("Wallet not connected");
-        if (chain?.id !== 421614) throw new Error("Please switch MetaMask to Arbitrum Sepolia (Chain ID: 421614)");
+        console.log("[useAfterLifeContract] Validating network...");
+        if (!isConnected) {
+            console.error("[useAfterLifeContract] Error: Wallet not connected");
+            throw new Error("Wallet not connected");
+        }
+        console.log("[useAfterLifeContract] Connection confirmed:", userAddress);
+        console.log("[useAfterLifeContract] Chain ID:", chain?.id);
+
+        if (chain?.id !== 421614) {
+            console.error("[useAfterLifeContract] Error: Wrong network. Target: 421614");
+            throw new Error("Please switch MetaMask to Arbitrum Sepolia (Chain ID: 421614)");
+        }
+        console.log("[useAfterLifeContract] Network validation complete.");
     };
 
-    const handleTransaction = async (functionName: string, args: any[]) => {
+    const handleTransaction = async (functionName: string, args: any[], value?: bigint) => {
         setIsLoading(true);
         setError(null);
+        console.log(`[handleTransaction] >>> INITIALIZING: ${functionName}`);
+
         try {
             validateNetwork();
 
             console.log("-------------------------------------------");
-            console.log(`Sending transaction: ${functionName}`);
-            console.log("Args:", args);
-            console.log("Contract:", CONTRACT_ADDRESS);
+            console.log(`[handleTransaction] PROCLAIM: ${functionName}`);
+            console.log(`[handleTransaction] Args:`, JSON.stringify(args));
+            console.log(`[handleTransaction] Value:`, value?.toString() || "0");
+            console.log(`[handleTransaction] Contract:`, CONTRACT_ADDRESS);
             console.log("-------------------------------------------");
 
             let hash;
 
-            // Optional Simulation: Try to catch logic reverts, but skip if RPC is being difficult
-            let simulatedRequest;
+            // Optional Simulation
+            let simulatedRequest = null;
             if (publicClient && userAddress) {
+                console.log(`[handleTransaction] Attempting simulation for ${functionName}...`);
                 try {
                     const { request } = await publicClient.simulateContract({
                         address: CONTRACT_ADDRESS,
@@ -44,60 +59,94 @@ export const useAfterLifeContract = () => {
                         functionName,
                         args,
                         account: userAddress,
+                        value: value,
                         gas: BigInt(1000000),
                     });
                     simulatedRequest = request;
-                    console.log("Simulation successful!");
+                    console.log(`[handleTransaction] Simulation SUCCESS for ${functionName}`);
                 } catch (simError: any) {
-                    const isRateLimit = simError.message?.toLowerCase().includes('rate limit') ||
-                        simError.details?.toLowerCase().includes('rate limit');
+                    const errorMsg = (simError.message || "").toLowerCase();
+                    console.warn(`[handleTransaction] Simulation REVERTED/FAILED: ${errorMsg}`);
 
-                    if (isRateLimit) {
-                        console.warn("Simulation skipped due to rate limiting. Attempting direct write...");
+                    const shouldBypassSimulation =
+                        errorMsg.includes('rate limit') ||
+                        errorMsg.includes('too many requests') ||
+                        errorMsg.includes('failed to fetch') ||
+                        errorMsg.includes('fetch failed') ||
+                        errorMsg.includes('network error') ||
+                        errorMsg.includes('internal json-rpc error') ||
+                        errorMsg.includes('json-rpc error') ||
+                        errorMsg.includes('reverted');
+
+                    if (shouldBypassSimulation) {
+                        console.warn(`[handleTransaction] BYPASSING simulation for ${functionName} (RPC issue)`);
                     } else {
-                        console.error("Simulation Logic Error:", simError);
+                        console.error(`[handleTransaction] FATAL Simulation Error:`, simError);
                         throw new Error(`Simulation Failed: ${simError.shortMessage || simError.message}`);
                     }
                 }
             }
 
             // Execute Transaction
-            if (simulatedRequest) {
-                hash = await writeContractAsync(simulatedRequest);
-            } else {
-                hash = await writeContractAsync({
-                    address: CONTRACT_ADDRESS,
-                    abi: AfterLifeArtifact.abi,
-                    functionName,
-                    args,
-                    account: userAddress,
-                    chain: chain || undefined,
-                    gas: BigInt(1000000),
-                } as any);
+            console.log(`[handleTransaction] >>> TRIGGERING MetaMask Handshake for ${functionName}...`);
+            try {
+                if (simulatedRequest) {
+                    console.log(`[handleTransaction] Using simulated request`);
+                    hash = await writeContractAsync(simulatedRequest);
+                } else {
+                    // Force path to catch block below to handle direct write
+                    throw new Error("SKIP_SIMULATION");
+                }
+            } catch (writeErr: any) {
+                const writeErrorMsg = (writeErr.message || "").toLowerCase();
+                const isRpcError =
+                    writeErrorMsg.includes('internal json-rpc error') ||
+                    writeErrorMsg.includes('json-rpc error') ||
+                    writeErrorMsg.includes('internal error') ||
+                    writeErrorMsg.includes('SKIP_SIMULATION');
+
+                if (isRpcError) {
+                    console.warn(`[handleTransaction] ${writeErrorMsg === 'skip_simulation' ? 'Bypassing simulation' : 'Simulated write failed with RPC error'}. Attempting direct write (fallback)...`);
+                    hash = await writeContractAsync({
+                        address: CONTRACT_ADDRESS,
+                        abi: AfterLifeArtifact.abi,
+                        functionName,
+                        args,
+                        value: value,
+                        account: userAddress,
+                        chain: chain || undefined,
+                        gas: BigInt(1000000),
+                    } as any);
+                } else {
+                    console.error(`[handleTransaction] Fatal Write Error:`, writeErr);
+                    throw writeErr;
+                }
             }
 
-            console.log("Transaction sent! Hash:", hash);
+            console.log(`[handleTransaction] HASH RECEIVED: ${hash}`);
 
             if (publicClient) {
+                console.log(`[handleTransaction] Awaiting block confirmation for ${hash}...`);
                 const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
                 if (receipt.status === 'reverted') {
+                    console.error(`[handleTransaction] TRANSACTION REVERTED ON-CHAIN: ${hash}`);
                     throw new Error("Transaction reverted on-chain");
                 }
 
-                console.log("Transaction confirmed:", receipt.transactionHash);
+                console.log(`[handleTransaction] SUCCESS! Confirmed in hash: ${receipt.transactionHash}`);
                 return receipt;
             } else {
+                console.warn(`[handleTransaction] publicClient missing, returning hash only.`);
                 return { hash };
             }
-
         } catch (err: any) {
-            console.error(`Error in ${functionName}:`, err);
-            const message = err.shortMessage || err.message || "Transaction failed";
-            setError(message);
+            console.error(`[handleTransaction] CRITICAL FAILURE in ${functionName}:`, err);
+            setError(err.message);
             throw err;
         } finally {
             setIsLoading(false);
+            console.log(`[handleTransaction] <<< FINALIZED: ${functionName}`);
         }
     };
 
@@ -132,34 +181,17 @@ export const useAfterLifeContract = () => {
     };
 
     const removeGuardian = async (guardianAddress: string) => {
+        console.log(`[useAfterLifeContract] removeGuardian EXECUTING for: ${guardianAddress}`);
         return handleTransaction('removeGuardian', [guardianAddress]);
     };
 
     const removeBeneficiary = async (beneficiaryAddress: string) => {
+        console.log(`[useAfterLifeContract] removeBeneficiary EXECUTING for: ${beneficiaryAddress}`);
         return handleTransaction('removeBeneficiary', [beneficiaryAddress]);
     };
 
     const deposit = async (valueInWei: bigint) => {
-        setIsLoading(true);
-        try {
-            validateNetwork();
-            const hash = await writeContractAsync({
-                address: CONTRACT_ADDRESS,
-                abi: AfterLifeArtifact.abi,
-                functionName: 'deposit',
-                args: [],
-                value: valueInWei,
-                account: userAddress,
-                chain: chain || undefined,
-                gas: BigInt(100000),
-            } as any);
-            if (publicClient) {
-                return await publicClient.waitForTransactionReceipt({ hash });
-            }
-            return { hash };
-        } finally {
-            setIsLoading(false);
-        }
+        return handleTransaction('deposit', [], valueInWei);
     };
 
     // --- Guardian Functions ---
@@ -190,12 +222,21 @@ export const useAfterLifeContract = () => {
                 account: userAddress,
             } as any) as any;
 
+            const currentBalance = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'getOwnerBalance',
+                args: [targetOwner],
+                account: userAddress,
+            } as any) as bigint;
+
             return {
                 isRegistered: protocol[0] as boolean,
                 lastHeartbeat: Number(protocol[1]) * 1000,
                 inactivityThreshold: Number(protocol[2]) * 1000,
                 isDead: protocol[3] as boolean,
                 initialVaultBalance: protocol[4],
+                currentVaultBalance: currentBalance,
                 vestingStartTime: Number(protocol[5]) * 1000,
                 totalAllocation: Number(protocol[6]),
                 deathDeclarationTime: Number(protocol[7]) * 1000,

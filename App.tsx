@@ -11,10 +11,12 @@ import { Button, Badge } from './components/ui/Primitives';
 import { EventLog } from './components/ui/EventLog';
 import { LogOut } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useAccount, useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect, useBalance } from 'wagmi';
+import { formatEther } from 'viem';
 import { useAfterLifeContract } from './hooks/useAfterLifeContract';
+import AnimatedLogo from './components/AnimatedLogo';
 
-const INACTIVITY_THRESHOLD_MS = 30000; // Fast for demo purposes (30s)
+const INACTIVITY_THRESHOLD_MS = 60000; // 1 minute for demo purposes
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole>(UserRole.NONE);
@@ -23,10 +25,13 @@ const App: React.FC = () => {
   const [vestingProgress, setVestingProgress] = useState(0);
   const [assets, setAssets] = useState<AssetState[]>(INITIAL_ASSETS);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [vaultBalance, setVaultBalance] = useState<bigint>(0n);
+  const [currentVaultBalance, setCurrentVaultBalance] = useState<bigint>(0n);
 
   // Entity State
   const [guardians, setGuardians] = useState<Guardian[]>(INITIAL_GUARDIANS);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(INITIAL_BENEFICIARIES);
+  const [targetOwner, setTargetOwner] = useState<string>(''); // The owner address we are currently monitoring
 
   // Event Log State
   const [events, setEvents] = useState<ProtocolEvent[]>([]);
@@ -69,7 +74,6 @@ const App: React.FC = () => {
 
       // Vesting Logic Simulation
       if (state === ProtocolState.EXECUTING) {
-        setVestingProgress(prev => Math.min(prev + 0.5, 100));
         // Unlock assets for demo
         setAssets(prev => prev.map(a => {
           if (a.unlockDate > now && Math.random() > 0.95) {
@@ -119,9 +123,9 @@ const App: React.FC = () => {
       // ... (StateMachine Logic)
 
       if (state === ProtocolState.EXECUTING && vestingStartTime) {
-        // Demo Vesting: Use a fake "Total Duration" of 60 seconds for demo
+        // Demo Vesting: Use a fake "Total Duration" of 5 minutes for demo
         // In real app, this would use beneficiary.vestingDuration
-        const demoVestingDuration = 60000;
+        const demoVestingDuration = 300000;
         const elapsed = now - vestingStartTime;
         const progress = Math.min((elapsed / demoVestingDuration) * 100, 100);
 
@@ -131,10 +135,22 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [lastHeartbeat, state, vestingStartTime]);
 
-  const confirmInactivity = () => {
-    addEvent('Guardian consensus reached. Inactivity confirmed.', 'CRITICAL');
-    setState(ProtocolState.EXECUTING);
-    setVestingStartTime(Date.now()); // Start the Vesting Clock
+  const {
+    confirmInactivity: contractConfirmInactivity,
+    claim: contractClaim
+  } = useAfterLifeContract();
+
+  const confirmInactivity = async () => {
+    try {
+      addEvent('Initiating consensus check...', 'INFO');
+      await contractConfirmInactivity(targetOwner);
+      addEvent('Guardian consensus reached. Inactivity confirmed.', 'CRITICAL');
+      setState(ProtocolState.EXECUTING);
+      setVestingStartTime(Date.now()); // Start the Vesting Clock
+    } catch (err: any) {
+      addEvent(`Consensus failed: ${err.message}`, 'WARNING');
+      throw err;
+    }
   };
 
   const addGuardian = (guardian: Guardian) => {
@@ -142,9 +158,19 @@ const App: React.FC = () => {
     addEvent(`New guardian added: ${guardian.name}`, 'INFO');
   };
 
+  const removeGuardian = (address: string) => {
+    setGuardians(prev => prev.filter(g => g.address !== address));
+    addEvent(`Guardian removed: ${address}`, 'INFO');
+  };
+
   const addBeneficiary = (beneficiary: Beneficiary) => {
     setBeneficiaries(prev => [...prev, beneficiary]);
     addEvent(`New beneficiary added: ${beneficiary.name}`, 'INFO');
+  };
+
+  const removeBeneficiary = (address: string) => {
+    setBeneficiaries(prev => prev.filter(b => b.address !== address));
+    addEvent(`Beneficiary removed: ${address}`, 'INFO');
   };
 
   const updateBeneficiaryAllocation = (address: string, newAllocation: number) => {
@@ -159,35 +185,34 @@ const App: React.FC = () => {
     });
   };
 
-  const claimBeneficiaryShare = (address: string) => {
+  const claimBeneficiaryShare = async (address: string) => {
     if (state !== ProtocolState.EXECUTING) return;
+    try {
+      addEvent(`Initiating claim for beneficiary...`, 'INFO');
+      await contractClaim(targetOwner);
+      addEvent(`Successful claim processed on-chain.`, 'INFO');
 
-    setBeneficiaries(prev => prev.map(b => {
-      if (b.address.toLowerCase() !== address.toLowerCase()) return b;
-
-      // Simple Demo Logic:
-      // Total Share = b.allocation % of Total Pot (e.g. 100 ETH)
-      // Vested % = vestingProgress
-      // Claimable = (Total Share * Vested%) - Already Claimed
-      // For MVP visual, we just set "Claimed" to the current Vested Amount string
-
-      const totalShareEth = (100 * b.allocation) / 100; // Assuming 100 ETH Pot
-      const vestedEth = (totalShareEth * vestingProgress) / 100;
-
-      addEvent(`Beneficiary ${b.name} claimed ${vestedEth.toFixed(4)} ETH`, 'INFO');
-
-      return {
-        ...b,
-        amountClaimed: `${vestedEth.toFixed(4)} ETH`
-      };
-    }));
+      // Update local state for immediate feedback if possible, or wait for sync
+    } catch (err: any) {
+      addEvent(`Claim failed: ${err.message}`, 'WARNING');
+      throw err;
+    }
   };
+
+  // Wallet & Routing
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
+  const { data: walletBalanceData } = useBalance({ address });
 
   const context: ProtocolContextType = {
     role,
     setRole,
     state,
     setState,
+    ownerAddress: targetOwner,
+    vaultBalance,
+    currentVaultBalance,
+    walletBalance: walletBalanceData ? formatEther(walletBalanceData.value) : '0.00',
     lastHeartbeat,
     inactivityThreshold: INACTIVITY_THRESHOLD_MS,
     proveLife,
@@ -196,7 +221,9 @@ const App: React.FC = () => {
     guardians,
     beneficiaries,
     addGuardian,
+    removeGuardian,
     addBeneficiary,
+    removeBeneficiary,
     updateBeneficiaryAllocation,
     claimBeneficiaryShare,
     vestingProgress,
@@ -204,22 +231,21 @@ const App: React.FC = () => {
     events,
     addEvent
   };
-
-  // Wallet & Routing
-  const { address, isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
   // Using the updated hook to read data
   const { getGuardians, getBeneficiaries, getProtocolState } = useAfterLifeContract();
 
   const [hasRegisteredOwner, setHasRegisteredOwner] = useState(false); // To bootstrap the first user as owner
 
-  // Fetch Data from Blockchain on Connect
+  // Fetch Data from Blockchain on Connect OR Target Owner Change
   useEffect(() => {
     if (isConnected) {
       const syncData = async () => {
         try {
+          const ownerToFetch = targetOwner || address;
+          if (!ownerToFetch) return;
+
           // 1. Fetch Entities
-          const _guardians = await getGuardians();
+          const _guardians = await getGuardians(ownerToFetch);
           // Always update state (even if empty) to clear mock data on connection
           setGuardians(_guardians.map(g => ({
             name: g.name,
@@ -228,7 +254,7 @@ const App: React.FC = () => {
             lastActive: Date.now() // Approximation
           })));
 
-          const _beneficiaries = await getBeneficiaries();
+          const _beneficiaries = await getBeneficiaries(ownerToFetch);
           setBeneficiaries(_beneficiaries.map(b => ({
             name: b.name,
             address: b.address,
@@ -239,9 +265,13 @@ const App: React.FC = () => {
           })));
 
           // 2. Fetch Protocol State (Heartbeat, etc)
-          const protocolState = await getProtocolState();
+          const protocolState = await getProtocolState(ownerToFetch);
           if (protocolState) {
             setLastHeartbeat(protocolState.lastHeartbeat);
+            setVaultBalance(protocolState.initialVaultBalance);
+            setCurrentVaultBalance(protocolState.currentVaultBalance);
+            setVestingStartTime(protocolState.vestingStartTime > 0 ? protocolState.vestingStartTime : null);
+
             // Check if dead
             if (protocolState.isDead) {
               setState(ProtocolState.EXECUTING);
@@ -259,7 +289,7 @@ const App: React.FC = () => {
                 setState(ProtocolState.ACTIVE);
               }
             }
-            addEvent(`Synced Status. Heartbeat: ${new Date(protocolState.lastHeartbeat).toLocaleTimeString()}`, 'INFO');
+            addEvent(`Synced Status for ${ownerToFetch.slice(0, 6)}. Heartbeat: ${new Date(protocolState.lastHeartbeat).toLocaleTimeString()}`, 'INFO');
           }
         } catch (err) {
           console.error("Sync Failed:", err);
@@ -271,36 +301,48 @@ const App: React.FC = () => {
       const poll = setInterval(syncData, 15000);
       return () => clearInterval(poll);
     }
-  }, [isConnected, address]);
+  }, [isConnected, address, targetOwner]);
 
   // Auto-Route removed. We now wait for user selection.
 
-  const verifyAndSetRole = (selectedRole: UserRole) => {
+  const verifyAndSetRole = async (selectedRole: UserRole, targetOwnerAddr?: string) => {
     if (!address) return;
     const currentAddr = address.toLowerCase();
 
     if (selectedRole === UserRole.GUARDIAN) {
-      const isAuthorized = guardians.some(g => g.address.toLowerCase() === currentAddr);
+      if (!targetOwnerAddr) return;
+
+      addEvent(`Authenticating Guardian for ${targetOwnerAddr.slice(0, 6)}...`, 'INFO');
+      const _guardians = await getGuardians(targetOwnerAddr);
+      const isAuthorized = _guardians.some(g => g.address.toLowerCase() === currentAddr);
+
       if (isAuthorized) {
+        setTargetOwner(targetOwnerAddr);
         setRole(UserRole.GUARDIAN);
         addEvent(`Guardian ${currentAddr.slice(0, 6)}... authenticated`, 'INFO');
       } else {
-        addEvent(`Access Denied: ${currentAddr.slice(0, 6)}... is not a Guardian`, 'WARNING');
-        alert("Access Denied: Your wallet address is not listed as a Guardian.");
+        addEvent(`Access Denied: ${currentAddr.slice(0, 6)}... is not a Guardian for ${targetOwnerAddr.slice(0, 6)}`, 'WARNING');
+        alert("Access Denied: Your wallet address is not listed as a Guardian for this Owner.");
       }
     }
     else if (selectedRole === UserRole.BENEFICIARY) {
-      const isAuthorized = beneficiaries.some(b => b.address.toLowerCase() === currentAddr);
+      if (!targetOwnerAddr) return;
+
+      addEvent(`Authenticating Beneficiary for ${targetOwnerAddr.slice(0, 6)}...`, 'INFO');
+      const _beneficiaries = await getBeneficiaries(targetOwnerAddr);
+      const isAuthorized = _beneficiaries.some(b => b.address.toLowerCase() === currentAddr);
+
       if (isAuthorized) {
+        setTargetOwner(targetOwnerAddr);
         setRole(UserRole.BENEFICIARY);
         addEvent(`Beneficiary ${currentAddr.slice(0, 6)}... authenticated`, 'INFO');
       } else {
-        addEvent(`Access Denied: ${currentAddr.slice(0, 6)}... is not a Beneficiary`, 'WARNING');
-        alert("Access Denied: Your wallet address is not listed as a Beneficiary.");
+        addEvent(`Access Denied: ${currentAddr.slice(0, 6)}... is not a Beneficiary for ${targetOwnerAddr.slice(0, 6)}`, 'WARNING');
+        alert("Access Denied: Your wallet address is not listed as a Beneficiary for this Owner.");
       }
     }
     else if (selectedRole === UserRole.OWNER) {
-      // Multi-tenant: Check if this wallet is registered as an owner
+      setTargetOwner(currentAddr);
       checkOwnerRegistration(currentAddr);
     }
   };
@@ -388,7 +430,19 @@ const App: React.FC = () => {
 
       {/* UI Overlay Layer */}
       <div className="ui-layer">
-        {/* Global Nav / Reset for Demo */}
+        {/* Global Nav / Brand Mark */}
+        {isConnected && (
+          <motion.div
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            className="fixed top-6 left-6 z-40 flex items-center gap-3 cursor-pointer group"
+            onClick={() => setRole(UserRole.NONE)} // Acting as a Home button
+          >
+            <AnimatedLogo size={40} />
+            <span className="text-white font-thin tracking-widest text-lg group-hover:text-emerald-400 transition-colors uppercase">AfterLife</span>
+          </motion.div>
+        )}
+
         {role !== UserRole.NONE && (
           <div className="fixed top-6 right-6 z-40">
             <Button variant="ghost" onClick={() => setRole(UserRole.NONE)}>

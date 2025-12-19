@@ -60,13 +60,14 @@ const GuardianList: React.FC<GuardianListProps> = ({ guardians, onRemove }) => {
                             </div>
 
                             {onRemove && (
-                                <button
+                                <Button
                                     onClick={() => onRemove(guardian.address)}
-                                    className="p-2 text-stone-600 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors"
+                                    variant="ghost"
+                                    className="p-2 text-stone-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all group-hover:scale-110"
                                     title="Remove Guardian"
                                 >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
+                                    <Trash2 className="w-5 h-5" />
+                                </Button>
                             )}
                         </div>
                     </motion.div>

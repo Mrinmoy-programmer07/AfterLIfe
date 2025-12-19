@@ -1,11 +1,11 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { UserRole } from '../types';
 import { Card, Button } from '../components/ui/Primitives';
 import { Shield, Key, Clock, ArrowRight, LogOut } from 'lucide-react';
 
 interface RoleSelectionViewProps {
-    onSelectRole: (role: UserRole) => void;
+    onSelectRole: (role: UserRole, targetOwner?: string) => void;
     connectedAddress?: string | null;
     onDisconnect?: () => void;
 }
@@ -41,6 +41,15 @@ const RoleCard: React.FC<{
 );
 
 const RoleSelectionView: React.FC<RoleSelectionViewProps> = ({ onSelectRole, connectedAddress, onDisconnect }) => {
+    const [selectedRole, setSelectedRole] = React.useState<UserRole | null>(null);
+    const [targetOwner, setTargetOwner] = React.useState('');
+
+    const handleConfirm = () => {
+        if (selectedRole) {
+            onSelectRole(selectedRole, targetOwner || undefined);
+        }
+    };
+
     return (
         <motion.div
             className="flex flex-col items-center justify-center min-h-screen p-6 pt-24 relative z-10"
@@ -66,37 +75,83 @@ const RoleSelectionView: React.FC<RoleSelectionViewProps> = ({ onSelectRole, con
                 <p className="text-stone-400">Choose a dashboard to access with your connected wallet.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full">
-                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }}>
-                    <RoleCard
-                        role={UserRole.OWNER}
-                        title="Owner"
-                        description="Configure protocol parameters, monitor liveliness, and prove life."
-                        icon={<Key className="w-6 h-6" />}
-                        onClick={() => onSelectRole(UserRole.OWNER)}
-                    />
-                </motion.div>
+            <AnimatePresence mode="wait">
+                {!selectedRole ? (
+                    <motion.div
+                        key="roles"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full"
+                    >
+                        <RoleCard
+                            role={UserRole.OWNER}
+                            title="Owner"
+                            description="Configure protocol parameters, monitor liveliness, and prove life."
+                            icon={<Key className="w-6 h-6" />}
+                            onClick={() => onSelectRole(UserRole.OWNER)}
+                        />
 
-                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }}>
-                    <RoleCard
-                        role={UserRole.GUARDIAN}
-                        title="Guardian"
-                        description="Monitor inactivity thresholds and verify protocol triggers."
-                        icon={<Shield className="w-6 h-6" />}
-                        onClick={() => onSelectRole(UserRole.GUARDIAN)}
-                    />
-                </motion.div>
+                        <RoleCard
+                            role={UserRole.GUARDIAN}
+                            title="Guardian"
+                            description="Monitor inactivity thresholds and verify protocol triggers."
+                            icon={<Shield className="w-6 h-6" />}
+                            onClick={() => setSelectedRole(UserRole.GUARDIAN)}
+                        />
 
-                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }}>
-                    <RoleCard
-                        role={UserRole.BENEFICIARY}
-                        title="Beneficiary"
-                        description="Monitor vesting schedules and claim assets."
-                        icon={<Clock className="w-6 h-6" />}
-                        onClick={() => onSelectRole(UserRole.BENEFICIARY)}
-                    />
-                </motion.div>
-            </div>
+                        <RoleCard
+                            role={UserRole.BENEFICIARY}
+                            title="Beneficiary"
+                            description="Monitor vesting schedules and claim assets."
+                            icon={<Clock className="w-6 h-6" />}
+                            onClick={() => setSelectedRole(UserRole.BENEFICIARY)}
+                        />
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="address-input"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="w-full max-w-md"
+                    >
+                        <Card className="p-8 border-white/10 bg-stone-950/80 backdrop-blur-xl">
+                            <Button
+                                variant="ghost"
+                                className="mb-6 p-0 h-auto hover:bg-transparent text-secondary hover:text-white flex items-center gap-2"
+                                onClick={() => setSelectedRole(null)}
+                            >
+                                <ArrowRight className="w-4 h-4 rotate-180" /> Back to roles
+                            </Button>
+
+                            <h3 className="text-2xl font-light text-white mb-2">Connect to Protocol</h3>
+                            <p className="text-secondary text-sm mb-6">Enter the wallet address of the Owner you are monitoring.</p>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] uppercase tracking-widest text-stone-500 mb-1 block">Owner Address</label>
+                                    <input
+                                        type="text"
+                                        placeholder="0x..."
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white font-mono text-sm focus:border-emerald-500/50 outline-none transition-colors"
+                                        value={targetOwner}
+                                        onChange={(e) => setTargetOwner(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                <Button
+                                    className="w-full bg-white text-black hover:bg-stone-200"
+                                    onClick={handleConfirm}
+                                    disabled={!targetOwner.startsWith('0x') || targetOwner.length !== 42}
+                                >
+                                    Access Dashboard
+                                </Button>
+                            </div>
+                        </Card>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
     );
 };

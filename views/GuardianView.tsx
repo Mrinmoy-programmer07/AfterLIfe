@@ -9,12 +9,15 @@ const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) =
 
     const canConfirm = context.state === ProtocolState.WARNING || context.state === ProtocolState.PENDING;
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
         setIsConfirming(true);
-        setTimeout(() => {
-            context.confirmInactivity();
+        try {
+            await context.confirmInactivity();
+        } catch (error) {
+            console.error("Confirmation failed:", error);
+        } finally {
             setIsConfirming(false);
-        }, 2000);
+        }
     };
 
     return (
@@ -25,7 +28,7 @@ const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) =
         >
             <header className="absolute top-8 left-8 flex items-center gap-3">
                 <Badge variant="neutral">Guardian Node</Badge>
-                <span className="text-sm text-secondary font-mono tracking-wider">OBSERVER MODE</span>
+                <span className="text-sm text-secondary font-mono tracking-wider">MONITORING: {context.ownerAddress.slice(0, 6)}...{context.ownerAddress.slice(-4)}</span>
             </header>
 
             <main className="w-full max-w-xl space-y-6">

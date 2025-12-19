@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Users, Coins, ChevronRight, Trash2 } from 'lucide-react';
 import { Beneficiary } from '../types';
-import { Card, Progress } from './ui/Primitives';
+import { Card, Progress, Button } from './ui/Primitives';
 
 interface BeneficiaryListProps {
     beneficiaries: Beneficiary[];
@@ -46,13 +46,14 @@ const BeneficiaryList: React.FC<BeneficiaryListProps> = ({ beneficiaries, onUpda
                                     <p className="text-[10px] text-stone-500 uppercase">Share</p>
                                 </div>
                                 {onRemove && (
-                                    <button
+                                    <Button
                                         onClick={() => onRemove(beneficiary.address)}
-                                        className="p-1.5 text-stone-600 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors z-10"
+                                        variant="ghost"
+                                        className="p-2 text-stone-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-all group-hover:scale-110 z-20"
                                         title="Remove Beneficiary"
                                     >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                                        <Trash2 className="w-5 h-5" />
+                                    </Button>
                                 )}
                             </div>
                         </div>

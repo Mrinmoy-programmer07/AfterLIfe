@@ -14,6 +14,9 @@ export const config = createConfig({
             http("https://arbitrum-sepolia-rpc.publicnode.com"),
             http("https://sepolia-rollup.arbitrum.io/rpc"),
             http("https://arbitrum-sepolia.rpc.thirdweb.com"),
+            http("https://arbitrum-sepolia.blockpi.network/v1/rpc/public"),
+            http("https://endpoints.omniatech.io/v1/arbitrum/sepolia/public"),
+            http("https://rpc.ankr.com/arbitrum_sepolia"),
         ]),
     },
 })

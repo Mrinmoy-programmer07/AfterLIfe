@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, Button, Progress, Badge, Dialog } from '../components/ui/Primitives';
 import { ProtocolState, ProtocolContextType } from '../types';
-import { Heart, Activity, UserPlus } from 'lucide-react';
+import { Heart, Activity, UserPlus, Wallet } from 'lucide-react';
 import { formatDuration } from '../services/mockService';
 import gsap from 'gsap';
 import GuardianList from '../components/GuardianList';
@@ -21,6 +21,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     removeGuardian: contractRemoveGuardian,
     removeBeneficiary: contractRemoveBeneficiary,
     proveLife: contractProveLife,
+    deposit: contractDeposit,
     isLoading,
     error: contractError,
     userAddress
@@ -29,6 +30,9 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
   // Modal State
   const [isAddGuardianOpen, setIsAddGuardianOpen] = useState(false);
   const [isAddBeneficiaryOpen, setIsAddBeneficiaryOpen] = useState(false);
+  const [isDepositOpen, setIsDepositOpen] = useState(false);
+  const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
+  const [removeTask, setRemoveTask] = useState<{ type: 'guardian' | 'beneficiary', address: string } | null>(null);
 
   // Form State
   const [newGuardian, setNewGuardian] = useState({ name: '', address: '' });
@@ -39,6 +43,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     vestingType: 'LINEAR',
     vestingDuration: 12 // Default 1 year
   });
+  const [depositAmount, setDepositAmount] = useState('');
 
   const handleProveLife = async () => {
     try {
@@ -59,27 +64,35 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     }
   };
 
-  const handleRemoveGuardian = async (address: string) => {
-    if (!confirm(`Are you sure you want to remove guardian ${address}?`)) return;
-    try {
-      await contractRemoveGuardian(address);
-      // Optimistic update - in a real app better to reload from chain or filter locally
-      // We'll rely on the auto-refresh to clean it up fully, or could filter locally
-      // context.removeGuardian(address); // If context had this method
-    } catch (error) {
-      console.error("Failed to remove guardian:", error);
-      alert("Transaction failed. See console for details.");
-    }
+  const handleRemoveGuardian = (address: string) => {
+    setRemoveTask({ type: 'guardian', address });
+    setIsRemoveConfirmOpen(true);
   };
 
-  const handleRemoveBeneficiary = async (address: string) => {
-    if (!confirm(`Are you sure you want to remove beneficiary ${address}?`)) return;
+  const handleRemoveBeneficiary = (address: string) => {
+    setRemoveTask({ type: 'beneficiary', address });
+    setIsRemoveConfirmOpen(true);
+  };
+
+  const executeRemoval = async () => {
+    if (!removeTask) return;
+    const { type, address } = removeTask;
+
     try {
-      await contractRemoveBeneficiary(address);
-      // context.removeBeneficiary(address);
-    } catch (error) {
-      console.error("Failed to remove beneficiary:", error);
-      alert("Transaction failed. See console for details.");
+      if (type === 'guardian') {
+        console.log(`[OwnerView] Executing guardian removal: ${address}`);
+        await contractRemoveGuardian(address);
+        context.removeGuardian(address);
+      } else {
+        console.log(`[OwnerView] Executing beneficiary removal: ${address}`);
+        await contractRemoveBeneficiary(address);
+        context.removeBeneficiary(address);
+      }
+      setIsRemoveConfirmOpen(false);
+      setRemoveTask(null);
+    } catch (error: any) {
+      console.error(`[OwnerView] FAILED to remove ${type}: ${address}`, error);
+      alert(`Removal failed: ${error.message || "Unknown error"}`);
     }
   };
 
@@ -152,6 +165,19 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     }
   };
 
+  const submitDeposit = async () => {
+    if (!depositAmount || isNaN(Number(depositAmount))) return;
+    try {
+      const amountWei = BigInt(Math.floor(Number(depositAmount) * 1e18));
+      await contractDeposit(amountWei);
+      setDepositAmount('');
+      setIsDepositOpen(false);
+    } catch (error) {
+      console.error("Deposit failed:", error);
+      alert("Deposit failed. Check console for details.");
+    }
+  };
+
   return (
     <motion.div
       className="flex flex-col items-center min-h-screen p-6 pt-24 pb-12 relative z-10"
@@ -165,9 +191,22 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
         )}
       </div>
 
-      <header className="absolute top-8 left-8 flex items-center gap-3">
-        <Badge variant="success">Active</Badge>
-        <span className="text-sm text-secondary font-mono tracking-wider">PROTOCOL ID: {userAddress ? `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` : 'Not Connected'}</span>
+      <header className="absolute top-8 left-8 flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <Badge variant="success">Active</Badge>
+          <span className="text-sm text-secondary font-mono tracking-wider text-white/70">PROTOCOL ID: {userAddress ? `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` : 'Not Connected'}</span>
+        </div>
+        <div className="flex gap-4 pl-1">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-stone-500 uppercase tracking-tighter">My Wallet</span>
+            <span className="text-xs text-white font-mono">{Number(context.walletBalance).toFixed(4)} ETH</span>
+          </div>
+          <div className="w-[1px] h-6 bg-white/10 my-auto" />
+          <div className="flex flex-col">
+            <span className="text-[10px] text-emerald-500 uppercase tracking-tighter">Vault Balance</span>
+            <span className="text-xs text-emerald-400 font-mono">{(Number(context.currentVaultBalance) / 1e18).toFixed(4)} ETH</span>
+          </div>
+        </div>
       </header>
 
       {/* Action Buttons Header */}
@@ -176,6 +215,9 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
       <main className="w-full max-w-5xl space-y-8">
         {/* Action Buttons */}
         <div className="flex justify-end gap-3 w-full">
+          <Button variant="outline" onClick={() => setIsDepositOpen(true)} className="gap-2 border-emerald-500/20 text-emerald-400">
+            <Wallet className="w-4 h-4" /> Deposit Funds
+          </Button>
           <Button variant="outline" onClick={() => setIsAddGuardianOpen(true)} className="gap-2">
             <UserPlus className="w-4 h-4" /> Add Guardian
           </Button>
@@ -330,6 +372,69 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
           </div>
 
           <Button className="w-full mt-4 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10" onClick={submitBeneficiary}>Add Beneficiary</Button>
+        </div>
+      </Dialog>
+
+      {/* Deposit Modal */}
+      <Dialog isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} title="Deposit to Vault">
+        <div className="space-y-4">
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+            <p className="text-xs text-secondary leading-relaxed">
+              Depositing ETH into your vault makes it available for your beneficiaries. You can withdraw these funds anytime as long as you are active.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-secondary uppercase flex justify-between">
+              <span>Amount (ETH)</span>
+              <span className="text-stone-500 italic">Balance: {Number(context.walletBalance).toFixed(4)}</span>
+            </label>
+            <input
+              type="number"
+              className="w-full bg-stone-950 border border-stone-800 rounded p-2 text-white mt-1 focus:border-emerald-500 outline-none font-mono"
+              value={depositAmount}
+              onChange={e => setDepositAmount(e.target.value)}
+              placeholder="0.0"
+              step="0.01"
+            />
+          </div>
+          <Button
+            className="w-full mt-4 bg-emerald-500 hover:bg-emerald-600 text-white border-none"
+            onClick={submitDeposit}
+            disabled={!depositAmount || Number(depositAmount) <= 0}
+          >
+            Confirm Deposit
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* Removal Confirmation Modal */}
+      <Dialog isOpen={isRemoveConfirmOpen} onClose={() => setIsRemoveConfirmOpen(false)} title="Confirm Removal">
+        <div className="space-y-6">
+          <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <p className="text-sm text-amber-200 leading-relaxed">
+              Are you sure you want to remove this {removeTask?.type}? This action will update the protocol state on the blockchain.
+            </p>
+            <p className="text-[10px] text-amber-500/70 font-mono mt-2 break-all">
+              TARGET: {removeTask?.address}
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setIsRemoveConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-red-500 hover:bg-red-600 text-white border-none"
+              onClick={executeRemoval}
+              isLoading={isLoading}
+            >
+              Confirm Removal
+            </Button>
+          </div>
         </div>
       </Dialog>
 

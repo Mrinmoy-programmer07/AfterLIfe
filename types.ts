@@ -54,6 +54,10 @@ export interface ProtocolContextType {
   setRole: (role: UserRole) => void;
   state: ProtocolState;
   setState: (state: ProtocolState) => void;
+  ownerAddress: string;
+  vaultBalance: bigint; // Snapshot at time of death
+  currentVaultBalance: bigint; // Live balance for Owner
+  walletBalance: string; // Balance in MetaMask
   lastHeartbeat: number;
   inactivityThreshold: number; // In milliseconds
   proveLife: () => void;
@@ -62,7 +66,9 @@ export interface ProtocolContextType {
   guardians: Guardian[];
   beneficiaries: Beneficiary[];
   addGuardian: (guardian: Guardian) => void;
+  removeGuardian: (address: string) => void;
   addBeneficiary: (beneficiary: Beneficiary) => void;
+  removeBeneficiary: (address: string) => void;
   updateBeneficiaryAllocation: (address: string, newAllocation: number) => void;
   vestingProgress: number; // 0 to 100
   elapsedTime: number; // Global clock for animations
