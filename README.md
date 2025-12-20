@@ -22,7 +22,7 @@ AfterLife is a decentralized "dead man's switch" protocol built on Arbitrum Sepo
 - **Animations:** Framer Motion + GSAP
 
 ### Primary Contract
-- **Address:** `0x3935129b6270998d57E2A092C90987B44310d634`
+- **Address:** `0x447c6c1844694449bc0A32f52a8b7EEDb303b42A`
 - **Network:** Arbitrum Sepolia (Chain ID: 421614)
 
 ---
@@ -77,5 +77,4 @@ The protocol is optimized for stable interaction:
 
 ---
 
-## 📄 License
-This project is licensed under the MIT License.
+
