@@ -24,165 +24,69 @@ export const useAfterLifeContract = () => {
     const [error, setError] = useState<string | null>(null);
 
     const validateNetwork = () => {
-        console.log("[useAfterLifeContract] Validating network...");
-        if (!isConnected) {
-            console.error("[useAfterLifeContract] Error: Wallet not connected");
-            throw new Error("Wallet not connected");
-        }
-        console.log("[useAfterLifeContract] Connection confirmed:", userAddress);
-        console.log("[useAfterLifeContract] Chain ID:", chain?.id);
-
-        // Allow both Arbitrum Sepolia (421614) and Mantle Sepolia (5003)
+        if (!isConnected) throw new Error("Wallet not connected");
         if (chain?.id !== 421614 && chain?.id !== 5003) {
-            console.error(`[useAfterLifeContract] Error: Unsupported network ${chain?.id}`);
-            throw new Error("Please switch MetaMask to Arbitrum Sepolia or Mantle Sepolia");
+            throw new Error("Please switch to Arbitrum Sepolia or Mantle Sepolia");
         }
-        console.log("[useAfterLifeContract] Network validation complete.");
     };
 
-    const handleTransaction = async (functionName: string, args: any[], value?: bigint) => {
+    // --- Core Transaction Handler (Minimalist Refactor) ---
+    const handleTransaction = async (
+        functionName: string,
+        args: any[],
+        value?: bigint
+    ) => {
+        if (!writeContractAsync || !publicClient) {
+            throw new Error("Contract system not initialized or wallet not connected.");
+        }
+
         setIsLoading(true);
         setError(null);
-        console.log(`[handleTransaction] >>> INITIALIZING: ${functionName}`);
 
         try {
             validateNetwork();
-
-            // --- Deep Diagnostics ---
-            if (typeof window !== 'undefined') {
-                const eth = (window as any).ethereum;
-                console.log(`[handleTransaction] PROVIDER CHECK:`, eth ? "Detected" : "MISSING");
-                if (eth?.providers?.length > 1) {
-                    console.warn(`[handleTransaction] WARNING: Multiple wallet providers detected (${eth.providers.length}). This causes "Internal JSON-RPC error".`);
-                }
-            }
-
-            if (publicClient && userAddress) {
-                const balance = await publicClient.getBalance({ address: userAddress });
-                console.log(`[handleTransaction] DIAGNOSTIC: User Balance = ${formatEther(balance)} ETH`);
-
-                if (balance === 0n) {
-                    console.warn(`[handleTransaction] WARNING: ZERO BALANCE detected. This will cause JSON-RPC errors.`);
-                }
-
-                if (functionName === 'register') {
-                    const alreadyOwner = await publicClient.readContract({
-                        address: CONTRACT_ADDRESS,
-                        abi: AfterLifeArtifact.abi,
-                        functionName: 'isOwner',
-                        args: [userAddress]
-                    } as any) as boolean;
-                    if (alreadyOwner) {
-                        console.error(`[handleTransaction] FATAL: Logic Error - Account ${userAddress} is already registered.`);
-                        throw new Error("Account already registered in the contract.");
-                    }
-                }
-            }
-
-            console.log("-------------------------------------------");
-            console.log(`[handleTransaction] PROCLAIM: ${functionName}`);
+            console.log(`[handleTransaction] >>> INITIALIZING: ${functionName}`);
             console.log(`[handleTransaction] Args:`, JSON.stringify(args, (_, v) => typeof v === 'bigint' ? v.toString() : v));
-            console.log(`[handleTransaction] Value:`, value?.toString() || "0");
-            console.log(`[handleTransaction] Contract:`, CONTRACT_ADDRESS);
-            console.log("-------------------------------------------");
 
-            let hash;
-
-            // Optional Simulation
-            let simulatedRequest = null;
-            // SKIP simulation for Mantle (5003) due to RPC instability/gas quirks
-            const shouldSimulate = publicClient && userAddress && activeChainId !== 5003;
-
-            if (shouldSimulate) {
-                console.log(`[handleTransaction] Attempting simulation for ${functionName}...`);
-                try {
-                    const { request } = await publicClient.simulateContract({
-                        address: CONTRACT_ADDRESS,
-                        abi: AfterLifeArtifact.abi,
-                        functionName,
-                        args,
-                        account: userAddress,
-                        value: value,
-                        gas: BigInt(60000000),
-                    });
-                    simulatedRequest = request;
-                    console.log(`[handleTransaction] Simulation SUCCESS for ${functionName}`);
-                } catch (simError: any) {
-                    const errorMsg = (simError.message || "").toLowerCase();
-                    console.warn(`[handleTransaction] Simulation REVERTED/FAILED: ${errorMsg}`);
-                    console.dir(simError); // DUMP ENTIRE ERROR OBJECT FOR DEBUGGING
-
-                    const shouldBypassSimulation =
-                        errorMsg.includes('rate limit') ||
-                        errorMsg.includes('too many requests') ||
-                        errorMsg.includes('failed to fetch') ||
-                        errorMsg.includes('fetch failed') ||
-                        errorMsg.includes('network error') ||
-                        errorMsg.includes('internal json-rpc error') ||
-                        errorMsg.includes('json-rpc error') ||
-                        errorMsg.includes('reverted') ||
-                        errorMsg.includes('out of gas') ||
-                        errorMsg.includes('transaction creation failed');
-
-                    if (shouldBypassSimulation) {
-                        console.warn(`[handleTransaction] BYPASSING simulation for ${functionName} (RPC issue)`);
-                    } else {
-                        console.error(`[handleTransaction] FATAL Simulation Error:`, simError);
-                        throw new Error(`Simulation Failed: ${simError.shortMessage || simError.message}`);
-                    }
-                }
-            } else if (activeChainId === 5003) {
-                console.log(`[handleTransaction] SKIPPING simulation for Mantle network.`);
-            }
-
-            // Execute Transaction
-            console.log(`[handleTransaction] >>> TRIGGERING MetaMask Handshake for ${functionName}...`);
-
-            const executeWrite = async (isFallback: boolean = false) => {
-                if (!isFallback && simulatedRequest) {
-                    console.log(`[handleTransaction] Using simulated request`);
-                    return await writeContractAsync(simulatedRequest);
-                } else {
-                    console.log(`[handleTransaction] Using direct write ${isFallback ? '(fallback retry)' : '(simulation bypassed)'}`);
-
-                    // Mantle requires high gas but 60M might be too expensive/over the limit. 10M is safer.
-                    const gasLimit = activeChainId === 5003 ? BigInt(10000000) : BigInt(3000000);
-
-                    const txParams: any = {
-                        address: CONTRACT_ADDRESS,
-                        abi: AfterLifeArtifact.abi,
-                        functionName,
-                        args,
-                        gas: gasLimit,
-                    };
-                    if (value && value > 0n) txParams.value = value;
-
-                    return await writeContractAsync(txParams);
-                }
+            const txParams: any = {
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName,
+                args,
             };
 
-            hash = await executeWrite();
+            // Applying baseline gas limits to bypass problematic estimation phases
+            if (activeChainId === 5003) {
+                console.log(`[handleTransaction] Applying Mantle gas limit (10M).`);
+                txParams.gas = BigInt(10000000);
+            } else {
+                console.log(`[handleTransaction] Applying Arbitrum baseline gas limit (3M).`);
+                txParams.gas = BigInt(3000000);
+            }
 
+            if (value && value > 0n) {
+                txParams.value = value;
+            }
+
+            // Step 1: Handshake
+            console.log(`[handleTransaction] >>> TRIGGERING METAMASK HANDSHAKE...`);
+            const hash = await writeContractAsync(txParams);
             console.log(`[handleTransaction] HASH RECEIVED: ${hash}`);
 
-            if (publicClient) {
-                console.log(`[handleTransaction] Awaiting block confirmation for ${hash}...`);
-                const receipt = await publicClient.waitForTransactionReceipt({ hash });
+            // Step 2: Confirmation
+            console.log(`[handleTransaction] Awaiting block confirmation...`);
+            const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-                if (receipt.status === 'reverted') {
-                    console.error(`[handleTransaction] TRANSACTION REVERTED ON-CHAIN: ${hash}`);
-                    throw new Error("Transaction reverted on-chain");
-                }
-
-                console.log(`[handleTransaction] SUCCESS! Confirmed in hash: ${receipt.transactionHash}`);
-                return receipt;
-            } else {
-                console.warn(`[handleTransaction] publicClient missing, returning hash only.`);
-                return { hash };
+            if (receipt.status === 'reverted') {
+                throw new Error(`Transaction reverted on-chain. Hash: ${hash}`);
             }
+
+            console.log(`[handleTransaction] SUCCESS! Confirmed in hash: ${receipt.transactionHash}`);
+            return receipt;
+
         } catch (err: any) {
             console.error(`[handleTransaction] CRITICAL FAILURE in ${functionName}:`, err);
-            setError(err.message);
+            setError(err.message || String(err));
             throw err;
         } finally {
             setIsLoading(false);
