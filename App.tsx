@@ -16,12 +16,22 @@ import { formatEther } from 'viem';
 import { useAfterLifeContract } from './hooks/useAfterLifeContract';
 import AnimatedLogo from './components/AnimatedLogo';
 
-const INACTIVITY_THRESHOLD_MS = 60000; // 1 minute for demo purposes
+const INACTIVITY_THRESHOLD_MS_DEFAULT = 120000; // 2 minutes for demo purposes
+const SYNC_BUFFER_MS = 20000; // 20s safety margin for blockchain clock lag
+
+const STATE_PRIORITY = {
+  [ProtocolState.ACTIVE]: 1,
+  [ProtocolState.WARNING]: 2,
+  [ProtocolState.PENDING]: 3,
+  [ProtocolState.EXECUTING]: 4,
+  [ProtocolState.COMPLETED]: 5,
+};
 
 const App: React.FC = () => {
   const [role, setRole] = useState<UserRole>(UserRole.NONE);
   const [state, setState] = useState<ProtocolState>(ProtocolState.ACTIVE);
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
+  const [inactivityThreshold, setInactivityThreshold] = useState<number>(INACTIVITY_THRESHOLD_MS_DEFAULT);
   const [vestingProgress, setVestingProgress] = useState(0);
   const [assets, setAssets] = useState<AssetState[]>(INITIAL_ASSETS);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -61,15 +71,23 @@ const App: React.FC = () => {
 
       setElapsedTime(now);
 
-      // State Machine Logic
-      if (state === ProtocolState.ACTIVE && timeSinceHeartbeat > INACTIVITY_THRESHOLD_MS * 0.7) {
-        setState(ProtocolState.WARNING);
-      }
-      else if (state === ProtocolState.WARNING && timeSinceHeartbeat > INACTIVITY_THRESHOLD_MS) {
-        setState(ProtocolState.PENDING);
-      }
-      else if (state === ProtocolState.ACTIVE && timeSinceHeartbeat <= INACTIVITY_THRESHOLD_MS * 0.7) {
-        // Recover logic handles in proveLife
+      // State Machine Logic (STICKY TRANSITIONS)
+      // DEMO: Use 2-minute threshold for state transitions
+      const thresholdForLogic = INACTIVITY_THRESHOLD_MS_DEFAULT;
+
+      const calculateNewState = () => {
+        if (state === ProtocolState.EXECUTING || state === ProtocolState.COMPLETED) return state;
+
+        if (timeSinceHeartbeat > thresholdForLogic + SYNC_BUFFER_MS) return ProtocolState.PENDING;
+        if (timeSinceHeartbeat > thresholdForLogic * 0.7) return ProtocolState.WARNING;
+        return ProtocolState.ACTIVE;
+      };
+
+      const newState = calculateNewState();
+
+      // Only transition if it's a forward move or if heartbeat changed (not handled here)
+      if (STATE_PRIORITY[newState] > STATE_PRIORITY[state]) {
+        setState(newState);
       }
 
       // Vesting Logic Simulation
@@ -214,7 +232,7 @@ const App: React.FC = () => {
     currentVaultBalance,
     walletBalance: walletBalanceData ? formatEther(walletBalanceData.value) : '0.00',
     lastHeartbeat,
-    inactivityThreshold: INACTIVITY_THRESHOLD_MS,
+    inactivityThreshold: INACTIVITY_THRESHOLD_MS_DEFAULT, // HARD OVERRIDE FOR DEMO VISUALS
     proveLife,
     confirmInactivity,
     assets,
@@ -244,30 +262,35 @@ const App: React.FC = () => {
           const ownerToFetch = targetOwner || address;
           if (!ownerToFetch) return;
 
+          // Force demo timer immediately
+          setInactivityThreshold(INACTIVITY_THRESHOLD_MS_DEFAULT);
+
           // 1. Fetch Entities
           const _guardians = await getGuardians(ownerToFetch);
-          // Always update state (even if empty) to clear mock data on connection
           setGuardians(_guardians.map(g => ({
             name: g.name,
             address: g.address,
-            isConfirmed: true, // If they are in the list, they are confirmed
-            lastActive: Date.now() // Approximation
+            isConfirmed: true,
+            lastActive: Date.now()
           })));
 
           const _beneficiaries = await getBeneficiaries(ownerToFetch);
           setBeneficiaries(_beneficiaries.map(b => ({
             name: b.name,
             address: b.address,
-            allocation: b.allocation / 100, // Convert BPS to %
-            amountClaimed: b.amountClaimed.toString(),
+            allocation: b.allocation / 100,
+            amountClaimed: b.amountClaimed.toString(), // Fix missing property lint
             vestingType: b.vestingType.toUpperCase() as any,
             vestingDuration: b.vestingDuration
           })));
 
-          // 2. Fetch Protocol State (Heartbeat, etc)
+          // 2. Fetch Protocol State
           const protocolState = await getProtocolState(ownerToFetch);
           if (protocolState) {
-            setLastHeartbeat(protocolState.lastHeartbeat);
+            const prevHeartbeat = lastHeartbeat;
+            const newHeartbeat = protocolState.lastHeartbeat;
+
+            setLastHeartbeat(newHeartbeat);
             setVaultBalance(protocolState.initialVaultBalance);
             setCurrentVaultBalance(protocolState.currentVaultBalance);
             setVestingStartTime(protocolState.vestingStartTime > 0 ? protocolState.vestingStartTime : null);
@@ -276,20 +299,24 @@ const App: React.FC = () => {
             if (protocolState.isDead) {
               setState(ProtocolState.EXECUTING);
             } else {
-              // Calculate local state based on heartbeat
               const now = Date.now();
               const elapsed = now - protocolState.lastHeartbeat;
-              const threshold = protocolState.inactivityThreshold;
+              const threshold = INACTIVITY_THRESHOLD_MS_DEFAULT;
 
-              if (elapsed > threshold) {
-                setState(ProtocolState.PENDING);
+              let calculatedState = ProtocolState.ACTIVE;
+              if (elapsed > threshold + SYNC_BUFFER_MS) {
+                calculatedState = ProtocolState.PENDING;
               } else if (elapsed > threshold * 0.7) {
-                setState(ProtocolState.WARNING);
-              } else {
-                setState(ProtocolState.ACTIVE);
+                calculatedState = ProtocolState.WARNING;
+              }
+
+              if (newHeartbeat > prevHeartbeat) {
+                setState(calculatedState);
+              } else if (STATE_PRIORITY[calculatedState] > STATE_PRIORITY[state]) {
+                setState(calculatedState);
               }
             }
-            addEvent(`Synced Status for ${ownerToFetch.slice(0, 6)}. Heartbeat: ${new Date(protocolState.lastHeartbeat).toLocaleTimeString()}`, 'INFO');
+            addEvent(`Synced [${ownerToFetch.slice(0, 6)}]. Heartbeat: ${new Date(protocolState.lastHeartbeat).toLocaleTimeString()}`, 'INFO');
           }
         } catch (err) {
           console.error("Sync Failed:", err);

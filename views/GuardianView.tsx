@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Card, Button, Badge } from '../components/ui/Primitives';
+import { Card, Button, Badge, Progress } from '../components/ui/Primitives';
 import { ProtocolContextType, ProtocolState } from '../types';
-import { Eye, CheckCircle2, Lock } from 'lucide-react';
+import { Eye, CheckCircle2, Lock, Activity } from 'lucide-react';
+import { formatDuration } from '../services/mockService';
 
 const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     const [isConfirming, setIsConfirming] = useState(false);
 
-    const canConfirm = context.state === ProtocolState.WARNING || context.state === ProtocolState.PENDING;
+    const remainingTime = context.inactivityThreshold - (Date.now() - context.lastHeartbeat);
+    const remainingPct = Math.max(0, (remainingTime / context.inactivityThreshold) * 100);
+
+    const canConfirm = context.state === ProtocolState.PENDING;
 
     const handleConfirm = async () => {
         setIsConfirming(true);
@@ -26,7 +30,7 @@ const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) =
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
         >
-            <header className="absolute top-8 left-8 flex items-center gap-3">
+            <header className="absolute top-20 left-8 flex items-center gap-3">
                 <Badge variant="neutral">Guardian Node</Badge>
                 <span className="text-sm text-secondary font-mono tracking-wider">MONITORING: {context.ownerAddress.slice(0, 6)}...{context.ownerAddress.slice(-4)}</span>
             </header>
@@ -38,39 +42,49 @@ const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) =
                     <p className="text-secondary">Verify owner inactivity. Your confirmation is irreversible.</p>
                 </div>
 
-                <Card className={`p-6 border-l-4 ${canConfirm ? 'border-l-amber-500' : 'border-l-stone-700'}`}>
-                    <h3 className="text-lg text-white font-medium mb-4">Current Status</h3>
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center py-2 border-b border-white/5">
-                            <span className="text-secondary">Protocol State</span>
-                            <Badge variant={canConfirm ? 'warning' : 'success'}>{context.state}</Badge>
+                <Card className="p-8 border-stone-800 bg-stone-950/80 backdrop-blur-xl">
+                    <div className="flex justify-between items-start mb-8">
+                        <div>
+                            <h2 className="text-xl font-light text-white flex items-center gap-2">
+                                <Activity className="w-5 h-5 text-emerald-500" />
+                                Protocol Vitality
+                            </h2>
+                            <p className="text-secondary text-xs mt-1">
+                                Real-time monitoring of owner's proof-of-life status.
+                            </p>
                         </div>
-                        <div className="flex justify-between items-center py-2 border-b border-white/5">
-                            <span className="text-secondary">Owner Activity</span>
-                            <span className="text-white font-mono">
-                                {canConfirm ? 'SILENT' : 'DETECTED'}
-                            </span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-white/5">
-                            <span className="text-secondary">Last Heartbeat</span>
-                            <span className="text-stone-400 font-mono text-sm">
-                                {new Date(context.lastHeartbeat).toLocaleString()}
-                            </span>
-                        </div>
-                        {!canConfirm && (
-                            <div className="flex justify-between items-center py-2 border-b border-white/5">
-                                <span className="text-secondary">Inactivity Timer</span>
-                                <div className="text-right">
-                                    <span className="text-emerald-400 font-mono font-bold">
-                                        {((context.inactivityThreshold - (Date.now() - context.lastHeartbeat)) / 1000).toFixed(1)}s
-                                    </span>
-                                    <span className="text-xs text-stone-600 block">REMAINING</span>
-                                </div>
+                        <div className="text-right">
+                            <div className={`text-2xl font-mono font-light tracking-tight ${remainingTime < 0 ? 'text-amber-500' : 'text-white'}`}>
+                                {remainingTime < 0 ? '0m 0s' : formatDuration(remainingTime)}
                             </div>
-                        )}
-                        <div className="flex justify-between items-center py-2 border-b border-white/5">
-                            <span className="text-secondary">Consensus</span>
-                            <span className="text-white font-mono">1/3 Signatures</span>
+                            <div className="text-[10px] text-stone-500 uppercase mt-1">EXPIRY COUNTDOWN</div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 mb-6">
+                        <div className="flex justify-between text-[10px] text-stone-400 uppercase tracking-widest">
+                            <span>Vitality Strength</span>
+                            <span>{Math.floor(remainingPct)}%</span>
+                        </div>
+                        <Progress
+                            value={remainingPct}
+                            indicatorColor={remainingPct < 20 ? 'bg-amber-500' : 'bg-emerald-500'}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                        <div className="space-y-1">
+                            <span className="text-[10px] text-stone-500 uppercase">Current State</span>
+                            <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${canConfirm ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                                <span className="text-sm text-white font-mono">{context.state}</span>
+                            </div>
+                        </div>
+                        <div className="space-y-1 text-right">
+                            <span className="text-[10px] text-stone-500 uppercase">Handshake Sync</span>
+                            <div className="text-sm text-white font-mono">
+                                {remainingTime < -20000 ? 'READY' : (remainingTime < 0 ? 'BUFFER' : 'IDLE')}
+                            </div>
                         </div>
                     </div>
                 </Card>

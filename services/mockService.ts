@@ -1,9 +1,9 @@
 import { AssetState, Guardian, Beneficiary } from '../types';
 
 export const INITIAL_ASSETS: AssetState[] = [
-  { id: '1', name: 'Main Vault (ETH)', value: '142.5 ETH', status: 'LOCKED', unlockDate: Date.now() + 86400000 * 30 },
-  { id: '2', name: 'Stablecoin Reserve', value: '50,000 USDC', status: 'LOCKED', unlockDate: Date.now() + 86400000 * 60 },
-  { id: '3', name: 'NFT Collection', value: '12 Items', status: 'LOCKED', unlockDate: Date.now() + 86400000 * 90 },
+  { id: '1', name: 'Main Vault (ETH)', value: '142.5 ETH', status: 'LOCKED', unlockDate: Date.now() + 120000 },
+  { id: '2', name: 'Stablecoin Reserve', value: '50,000 USDC', status: 'LOCKED', unlockDate: Date.now() + 120000 },
+  { id: '3', name: 'NFT Collection', value: '12 Items', status: 'LOCKED', unlockDate: Date.now() + 120000 },
 ];
 
 export const INITIAL_GUARDIANS: Guardian[] = [

@@ -1,16 +1,24 @@
 import { useState } from 'react';
 import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
+import { formatEther } from 'viem';
 
 // @ts-ignore - JSON import
 import AfterLifeArtifact from '../artifacts/contracts/AfterLife.sol/AfterLife.json';
 
-// Multi-tenant contract on Arbitrum Sepolia
-const CONTRACT_ADDRESS = "0x3935129b6270998d57E2A092C90987B44310d634";
+// Multi-chain contract addresses
+const CONTRACT_ADDRESSES: { [key: number]: string } = {
+    421614: "0xAc11eedfc08B68997B66a09fa18cAd89BcF7681e", // Arbitrum Sepolia
+    5003: "0x12e8CbbA13A6e74338FdE659B3B700E7ccecd694",   // Mantle Sepolia
+};
 
 export const useAfterLifeContract = () => {
     const { isConnected, chain, address: userAddress } = useAccount();
     const { writeContractAsync } = useWriteContract();
     const publicClient = usePublicClient();
+
+    // Dynamically select address based on chain, default to Arbitrum if unknown
+    const activeChainId = chain?.id || 421614;
+    const CONTRACT_ADDRESS = (CONTRACT_ADDRESSES[activeChainId] || CONTRACT_ADDRESSES[421614]) as `0x${string}`;
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -24,9 +32,10 @@ export const useAfterLifeContract = () => {
         console.log("[useAfterLifeContract] Connection confirmed:", userAddress);
         console.log("[useAfterLifeContract] Chain ID:", chain?.id);
 
-        if (chain?.id !== 421614) {
-            console.error("[useAfterLifeContract] Error: Wrong network. Target: 421614");
-            throw new Error("Please switch MetaMask to Arbitrum Sepolia (Chain ID: 421614)");
+        // Allow both Arbitrum Sepolia (421614) and Mantle Sepolia (5003)
+        if (chain?.id !== 421614 && chain?.id !== 5003) {
+            console.error(`[useAfterLifeContract] Error: Unsupported network ${chain?.id}`);
+            throw new Error("Please switch MetaMask to Arbitrum Sepolia or Mantle Sepolia");
         }
         console.log("[useAfterLifeContract] Network validation complete.");
     };
@@ -39,9 +48,40 @@ export const useAfterLifeContract = () => {
         try {
             validateNetwork();
 
+            // --- Deep Diagnostics ---
+            if (typeof window !== 'undefined') {
+                const eth = (window as any).ethereum;
+                console.log(`[handleTransaction] PROVIDER CHECK:`, eth ? "Detected" : "MISSING");
+                if (eth?.providers?.length > 1) {
+                    console.warn(`[handleTransaction] WARNING: Multiple wallet providers detected (${eth.providers.length}). This causes "Internal JSON-RPC error".`);
+                }
+            }
+
+            if (publicClient && userAddress) {
+                const balance = await publicClient.getBalance({ address: userAddress });
+                console.log(`[handleTransaction] DIAGNOSTIC: User Balance = ${formatEther(balance)} ETH`);
+
+                if (balance === 0n) {
+                    console.warn(`[handleTransaction] WARNING: ZERO BALANCE detected. This will cause JSON-RPC errors.`);
+                }
+
+                if (functionName === 'register') {
+                    const alreadyOwner = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: AfterLifeArtifact.abi,
+                        functionName: 'isOwner',
+                        args: [userAddress]
+                    } as any) as boolean;
+                    if (alreadyOwner) {
+                        console.error(`[handleTransaction] FATAL: Logic Error - Account ${userAddress} is already registered.`);
+                        throw new Error("Account already registered in the contract.");
+                    }
+                }
+            }
+
             console.log("-------------------------------------------");
             console.log(`[handleTransaction] PROCLAIM: ${functionName}`);
-            console.log(`[handleTransaction] Args:`, JSON.stringify(args));
+            console.log(`[handleTransaction] Args:`, JSON.stringify(args, (_, v) => typeof v === 'bigint' ? v.toString() : v));
             console.log(`[handleTransaction] Value:`, value?.toString() || "0");
             console.log(`[handleTransaction] Contract:`, CONTRACT_ADDRESS);
             console.log("-------------------------------------------");
@@ -50,7 +90,10 @@ export const useAfterLifeContract = () => {
 
             // Optional Simulation
             let simulatedRequest = null;
-            if (publicClient && userAddress) {
+            // SKIP simulation for Mantle (5003) due to RPC instability/gas quirks
+            const shouldSimulate = publicClient && userAddress && activeChainId !== 5003;
+
+            if (shouldSimulate) {
                 console.log(`[handleTransaction] Attempting simulation for ${functionName}...`);
                 try {
                     const { request } = await publicClient.simulateContract({
@@ -60,13 +103,14 @@ export const useAfterLifeContract = () => {
                         args,
                         account: userAddress,
                         value: value,
-                        gas: BigInt(1000000),
+                        gas: BigInt(60000000),
                     });
                     simulatedRequest = request;
                     console.log(`[handleTransaction] Simulation SUCCESS for ${functionName}`);
                 } catch (simError: any) {
                     const errorMsg = (simError.message || "").toLowerCase();
                     console.warn(`[handleTransaction] Simulation REVERTED/FAILED: ${errorMsg}`);
+                    console.dir(simError); // DUMP ENTIRE ERROR OBJECT FOR DEBUGGING
 
                     const shouldBypassSimulation =
                         errorMsg.includes('rate limit') ||
@@ -76,7 +120,9 @@ export const useAfterLifeContract = () => {
                         errorMsg.includes('network error') ||
                         errorMsg.includes('internal json-rpc error') ||
                         errorMsg.includes('json-rpc error') ||
-                        errorMsg.includes('reverted');
+                        errorMsg.includes('reverted') ||
+                        errorMsg.includes('out of gas') ||
+                        errorMsg.includes('transaction creation failed');
 
                     if (shouldBypassSimulation) {
                         console.warn(`[handleTransaction] BYPASSING simulation for ${functionName} (RPC issue)`);
@@ -85,43 +131,37 @@ export const useAfterLifeContract = () => {
                         throw new Error(`Simulation Failed: ${simError.shortMessage || simError.message}`);
                     }
                 }
+            } else if (activeChainId === 5003) {
+                console.log(`[handleTransaction] SKIPPING simulation for Mantle network.`);
             }
 
             // Execute Transaction
             console.log(`[handleTransaction] >>> TRIGGERING MetaMask Handshake for ${functionName}...`);
-            try {
-                if (simulatedRequest) {
-                    console.log(`[handleTransaction] Using simulated request`);
-                    hash = await writeContractAsync(simulatedRequest);
-                } else {
-                    // Force path to catch block below to handle direct write
-                    throw new Error("SKIP_SIMULATION");
-                }
-            } catch (writeErr: any) {
-                const writeErrorMsg = (writeErr.message || "").toLowerCase();
-                const isRpcError =
-                    writeErrorMsg.includes('internal json-rpc error') ||
-                    writeErrorMsg.includes('json-rpc error') ||
-                    writeErrorMsg.includes('internal error') ||
-                    writeErrorMsg.includes('SKIP_SIMULATION');
 
-                if (isRpcError) {
-                    console.warn(`[handleTransaction] ${writeErrorMsg === 'skip_simulation' ? 'Bypassing simulation' : 'Simulated write failed with RPC error'}. Attempting direct write (fallback)...`);
-                    hash = await writeContractAsync({
+            const executeWrite = async (isFallback: boolean = false) => {
+                if (!isFallback && simulatedRequest) {
+                    console.log(`[handleTransaction] Using simulated request`);
+                    return await writeContractAsync(simulatedRequest);
+                } else {
+                    console.log(`[handleTransaction] Using direct write ${isFallback ? '(fallback retry)' : '(simulation bypassed)'}`);
+
+                    // Mantle requires high gas but 60M might be too expensive/over the limit. 10M is safer.
+                    const gasLimit = activeChainId === 5003 ? BigInt(10000000) : BigInt(3000000);
+
+                    const txParams: any = {
                         address: CONTRACT_ADDRESS,
                         abi: AfterLifeArtifact.abi,
                         functionName,
                         args,
-                        value: value,
-                        account: userAddress,
-                        chain: chain || undefined,
-                        gas: BigInt(1000000),
-                    } as any);
-                } else {
-                    console.error(`[handleTransaction] Fatal Write Error:`, writeErr);
-                    throw writeErr;
+                        gas: gasLimit,
+                    };
+                    if (value && value > 0n) txParams.value = value;
+
+                    return await writeContractAsync(txParams);
                 }
-            }
+            };
+
+            hash = await executeWrite();
 
             console.log(`[handleTransaction] HASH RECEIVED: ${hash}`);
 
@@ -153,7 +193,7 @@ export const useAfterLifeContract = () => {
     // --- Owner Functions ---
 
     const register = async (thresholdSeconds: number) => {
-        return handleTransaction('register', [thresholdSeconds]);
+        return handleTransaction('register', [BigInt(thresholdSeconds)]);
     };
 
     const proveLife = async () => {
@@ -174,9 +214,9 @@ export const useAfterLifeContract = () => {
         return handleTransaction('addBeneficiary', [
             name,
             beneficiaryAddress,
-            allocationBps,
+            BigInt(allocationBps),
             vestingType,
-            duration
+            BigInt(duration)
         ]);
     };
 

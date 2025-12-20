@@ -191,7 +191,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
         )}
       </div>
 
-      <header className="absolute top-8 left-8 flex flex-col gap-2">
+      <header className="absolute top-20 left-8 flex flex-col gap-2">
         <div className="flex items-center gap-3">
           <Badge variant="success">Active</Badge>
           <span className="text-sm text-secondary font-mono tracking-wider text-white/70">PROTOCOL ID: {userAddress ? `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` : 'Not Connected'}</span>

@@ -6,7 +6,7 @@ pragma solidity ^0.8.20;
 contract AfterLife {
     
     // --- Constants ---
-    uint256 public constant MIN_THRESHOLD = 1 days;
+    uint256 public constant MIN_THRESHOLD = 1 minutes;
     uint256 public constant MAX_GUARDIANS = 10;
     uint256 public constant MAX_BENEFICIARIES = 20;
     uint256 public constant REVIVE_GRACE_PERIOD = 7 days;

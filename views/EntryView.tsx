@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Primitives';
 import { useConnect } from 'wagmi';
 
 import AnimatedLogo from '../components/AnimatedLogo';
+import NetworkSwitcher from '../components/ui/NetworkSwitcher';
 
 const EntryView: React.FC = () => {
   const { connectors, connect } = useConnect();
@@ -22,6 +23,9 @@ const EntryView: React.FC = () => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
     >
+      <div className="absolute top-6 right-6">
+        <NetworkSwitcher />
+      </div>
       <div className="text-center space-y-6 max-w-2xl flex flex-col items-center">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}

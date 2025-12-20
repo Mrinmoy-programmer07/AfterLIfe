@@ -4,6 +4,8 @@ import { UserRole } from '../types';
 import { Card, Button } from '../components/ui/Primitives';
 import { Shield, Key, Clock, ArrowRight, LogOut } from 'lucide-react';
 
+import NetworkSwitcher from '../components/ui/NetworkSwitcher';
+
 interface RoleSelectionViewProps {
     onSelectRole: (role: UserRole, targetOwner?: string) => void;
     connectedAddress?: string | null;
@@ -57,6 +59,7 @@ const RoleSelectionView: React.FC<RoleSelectionViewProps> = ({ onSelectRole, con
             animate={{ opacity: 1 }}
         >
             <div className="absolute top-6 right-6 flex items-center gap-3">
+                <NetworkSwitcher />
                 <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10">
                     <div className={`w-2 h-2 rounded-full ${connectedAddress ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                     <span className="text-xs font-mono text-stone-400">
