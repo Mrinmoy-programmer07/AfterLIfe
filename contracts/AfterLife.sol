@@ -451,7 +451,9 @@ contract AfterLife {
     }
 
     // --- Receive ETH ---
-    receive() external payable {
-        revert UseDepositFunction();
+    receive() external payable onlyRegistered {
+        if (msg.value == 0) revert NoValue();
+        ownerBalances[msg.sender] += msg.value;
+        emit FundsDeposited(msg.sender, msg.value);
     }
 }

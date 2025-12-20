@@ -5,92 +5,41 @@ import { formatEther } from 'viem';
 // @ts-ignore - JSON import
 import AfterLifeArtifact from '../artifacts/contracts/AfterLife.sol/AfterLife.json';
 
-// Multi-chain contract addresses
-const CONTRACT_ADDRESSES: { [key: number]: string } = {
-    421614: "0xAc11eedfc08B68997B66a09fa18cAd89BcF7681e", // Arbitrum Sepolia
-    5003: "0x12e8CbbA13A6e74338FdE659B3B700E7ccecd694",   // Mantle Sepolia
-};
+// Arbitrum Sepolia contract address
+const CONTRACT_ADDRESS = "0x447c6c1844694449bc0A32f52a8b7EEDb303b42A";
 
 export const useAfterLifeContract = () => {
     const { isConnected, chain, address: userAddress } = useAccount();
     const { writeContractAsync } = useWriteContract();
     const publicClient = usePublicClient();
 
-    // Dynamically select address based on chain, default to Arbitrum if unknown
+    // Arbitrum Sepolia
     const activeChainId = chain?.id || 421614;
-    const CONTRACT_ADDRESS = (CONTRACT_ADDRESSES[activeChainId] || CONTRACT_ADDRESSES[421614]) as `0x${string}`;
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const validateNetwork = () => {
-        if (!isConnected) throw new Error("Wallet not connected");
-        if (chain?.id !== 421614 && chain?.id !== 5003) {
-            throw new Error("Please switch to Arbitrum Sepolia or Mantle Sepolia");
-        }
-    };
-
-    // --- Core Transaction Handler (Minimalist Refactor) ---
-    const handleTransaction = async (
-        functionName: string,
-        args: any[],
-        value?: bigint
-    ) => {
-        if (!writeContractAsync || !publicClient) {
-            throw new Error("Contract system not initialized or wallet not connected.");
-        }
-
+    // --- Core Transaction Handler (Ultra-Simple) ---
+    const handleTransaction = async (functionName: string, args: any[], value?: bigint) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            validateNetwork();
-            console.log(`[handleTransaction] >>> INITIALIZING: ${functionName}`);
-            console.log(`[handleTransaction] Args:`, JSON.stringify(args, (_, v) => typeof v === 'bigint' ? v.toString() : v));
-
-            const txParams: any = {
+            const hash = await writeContractAsync({
                 address: CONTRACT_ADDRESS,
                 abi: AfterLifeArtifact.abi,
                 functionName,
                 args,
-            };
+                value,
+            } as any);
 
-            // Applying baseline gas limits to bypass problematic estimation phases
-            if (activeChainId === 5003) {
-                console.log(`[handleTransaction] Applying Mantle gas limit (10M).`);
-                txParams.gas = BigInt(10000000);
-            } else {
-                console.log(`[handleTransaction] Applying Arbitrum baseline gas limit (3M).`);
-                txParams.gas = BigInt(3000000);
-            }
-
-            if (value && value > 0n) {
-                txParams.value = value;
-            }
-
-            // Step 1: Handshake
-            console.log(`[handleTransaction] >>> TRIGGERING METAMASK HANDSHAKE...`);
-            const hash = await writeContractAsync(txParams);
-            console.log(`[handleTransaction] HASH RECEIVED: ${hash}`);
-
-            // Step 2: Confirmation
-            console.log(`[handleTransaction] Awaiting block confirmation...`);
-            const receipt = await publicClient.waitForTransactionReceipt({ hash });
-
-            if (receipt.status === 'reverted') {
-                throw new Error(`Transaction reverted on-chain. Hash: ${hash}`);
-            }
-
-            console.log(`[handleTransaction] SUCCESS! Confirmed in hash: ${receipt.transactionHash}`);
-            return receipt;
-
+            return await publicClient!.waitForTransactionReceipt({ hash });
         } catch (err: any) {
-            console.error(`[handleTransaction] CRITICAL FAILURE in ${functionName}:`, err);
-            setError(err.message || String(err));
+            const msg = err.shortMessage || err.message || "Transaction failed";
+            setError(msg);
             throw err;
         } finally {
             setIsLoading(false);
-            console.log(`[handleTransaction] <<< FINALIZED: ${functionName}`);
         }
     };
 
@@ -125,17 +74,11 @@ export const useAfterLifeContract = () => {
     };
 
     const removeGuardian = async (guardianAddress: string) => {
-        console.log(`[useAfterLifeContract] removeGuardian EXECUTING for: ${guardianAddress}`);
         return handleTransaction('removeGuardian', [guardianAddress]);
     };
 
     const removeBeneficiary = async (beneficiaryAddress: string) => {
-        console.log(`[useAfterLifeContract] removeBeneficiary EXECUTING for: ${beneficiaryAddress}`);
         return handleTransaction('removeBeneficiary', [beneficiaryAddress]);
-    };
-
-    const deposit = async (valueInWei: bigint) => {
-        return handleTransaction('deposit', [], valueInWei);
     };
 
     // --- Guardian Functions ---
@@ -315,7 +258,6 @@ export const useAfterLifeContract = () => {
         addBeneficiary,
         removeGuardian,
         removeBeneficiary,
-        deposit,
         // Guardian functions
         confirmInactivity,
         // Beneficiary functions

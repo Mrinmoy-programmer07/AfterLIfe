@@ -20,11 +20,6 @@ module.exports = {
             chainId: 421614,
             accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
         },
-        mantleSepolia: {
-            url: "https://rpc.sepolia.mantle.xyz",
-            chainId: 5003,
-            accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
-        }
     },
     paths: {
         sources: "./contracts",

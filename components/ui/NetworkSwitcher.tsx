@@ -2,7 +2,7 @@ import React from 'react';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, ChevronDown, Check } from 'lucide-react';
-import { arbitrumSepolia, mantleSepoliaTestnet } from 'wagmi/chains';
+import { arbitrumSepolia } from 'wagmi/chains';
 
 const NetworkSwitcher: React.FC = () => {
     const chainId = useChainId();
@@ -11,7 +11,6 @@ const NetworkSwitcher: React.FC = () => {
 
     const chains = [
         { id: arbitrumSepolia.id, name: 'Arbitrum Sepolia', color: 'bg-blue-500' },
-        { id: mantleSepoliaTestnet.id, name: 'Mantle Sepolia', color: 'bg-teal-500' },
     ];
 
     const activeChain = chains.find(c => c.id === chainId) || { name: 'Unknown Network', color: 'bg-stone-500' };
