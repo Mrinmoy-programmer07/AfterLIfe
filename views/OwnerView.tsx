@@ -2,16 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, Button, Progress, Badge, Dialog } from '../components/ui/Primitives';
 import { ProtocolState, ProtocolContextType } from '../types';
-import { Heart, Activity, UserPlus, Wallet } from 'lucide-react';
+import { Heart, Activity, UserPlus, Wallet, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { formatDuration } from '../services/mockService';
 import gsap from 'gsap';
 import GuardianList from '../components/GuardianList';
 import BeneficiaryList from '../components/BeneficiaryList';
 import { useAfterLifeContract } from '../hooks/useAfterLifeContract';
+import toast from 'react-hot-toast';
 
 const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     const [pulse, setPulse] = useState(false);
-    const remainingTime = context.inactivityThreshold - (Date.now() - context.lastHeartbeat);
+    const remainingTime = Math.max(0, context.inactivityThreshold - (Date.now() - context.lastHeartbeat));
     const remainingPct = Math.max(0, (remainingTime / context.inactivityThreshold) * 100);
 
     // Contract Integration
@@ -21,6 +22,8 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
         removeGuardian: contractRemoveGuardian,
         removeBeneficiary: contractRemoveBeneficiary,
         proveLife: contractProveLife,
+        deposit: contractDeposit,
+        withdraw: contractWithdraw,
         isLoading,
         error: contractError,
         userAddress
@@ -30,7 +33,13 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     const [isAddGuardianOpen, setIsAddGuardianOpen] = useState(false);
     const [isAddBeneficiaryOpen, setIsAddBeneficiaryOpen] = useState(false);
     const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
+    const [isDepositOpen, setIsDepositOpen] = useState(false);
+    const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
     const [removeTask, setRemoveTask] = useState<{ type: 'guardian' | 'beneficiary', address: string } | null>(null);
+
+    // Deposit/Withdraw State
+    const [depositAmount, setDepositAmount] = useState('');
+    const [withdrawAmount, setWithdrawAmount] = useState('');
 
     // Form State
     const [newGuardian, setNewGuardian] = useState({ name: '', address: '' });
@@ -57,7 +66,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
             context.proveLife();
         } catch (error) {
             console.error("Failed to prove life:", error);
-            alert("Transaction failed. See console for details.");
+            toast.error("Transaction failed. See console for details.");
         }
     };
 
@@ -89,7 +98,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
             setRemoveTask(null);
         } catch (error: any) {
             console.error(`[OwnerView] FAILED to remove ${type}: ${address}`, error);
-            alert(`Removal failed: ${error.message || "Unknown error"}`);
+            toast.error(`Removal failed: ${error.message || "Unknown error"}`);
         }
     };
 
@@ -111,7 +120,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
                 setIsAddGuardianOpen(false);
             } catch (error) {
                 console.error("Failed to add guardian:", error);
-                alert("Transaction failed. See console for details.");
+                toast.error("Transaction failed. See console for details.");
             }
         }
     };
@@ -157,8 +166,35 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
                 setIsAddBeneficiaryOpen(false);
             } catch (error) {
                 console.error("Failed to add beneficiary:", error);
-                alert("Transaction failed. See console for details.");
+                toast.error("Transaction failed. See console for details.");
             }
+        }
+    };
+
+    const handleDeposit = async () => {
+        if (!depositAmount || parseFloat(depositAmount) <= 0) return;
+        try {
+            await contractDeposit(depositAmount);
+            setDepositAmount('');
+            setIsDepositOpen(false);
+            context.addEvent(`Deposited ${depositAmount} ETH to vault`, 'INFO');
+        } catch (error: any) {
+            console.error('Deposit failed:', error);
+            toast.error(`Deposit failed: ${error.message || 'Unknown error'}`);
+        }
+    };
+
+    const handleWithdraw = async () => {
+        if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) return;
+        try {
+            const amountWei = BigInt(Math.floor(parseFloat(withdrawAmount) * 1e18));
+            await contractWithdraw(amountWei);
+            setWithdrawAmount('');
+            setIsWithdrawOpen(false);
+            context.addEvent(`Withdrew ${withdrawAmount} ETH from vault`, 'INFO');
+        } catch (error: any) {
+            console.error('Withdraw failed:', error);
+            toast.error(`Withdraw failed: ${error.message || 'Unknown error'}`);
         }
     };
 
@@ -175,26 +211,42 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
                 )}
             </div>
 
-            <header className="absolute top-20 left-8 flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                    <Badge variant="success">Active</Badge>
-                    <span className="text-sm text-secondary font-mono tracking-wider text-white/70">PROTOCOL ID: {userAddress ? `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` : 'Not Connected'}</span>
-                </div>
-                <div className="flex flex-col pl-1">
-                    <span className="text-[10px] text-stone-500 uppercase tracking-tighter">Current Balance</span>
-                    <span className="text-sm text-white font-mono">{Number(context.walletBalance).toFixed(4)} ETH</span>
-                </div>
-            </header>
-
-            <main className="w-full max-w-5xl space-y-8">
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 w-full">
-                    <Button variant="outline" onClick={() => setIsAddGuardianOpen(true)} className="gap-2">
-                        <UserPlus className="w-4 h-4" /> Add Guardian
-                    </Button>
-                    <Button variant="outline" onClick={() => setIsAddBeneficiaryOpen(true)} className="gap-2">
-                        <UserPlus className="w-4 h-4" /> Add Beneficiary
-                    </Button>
+            <main className="w-full max-w-5xl space-y-6">
+                {/* Header with wallet info and action buttons */}
+                <div className="flex justify-between items-start w-full">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                            <Badge variant="success">Active</Badge>
+                            <span className="text-sm text-secondary font-mono tracking-wider text-white/70">PROTOCOL ID: {userAddress ? `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` : 'Not Connected'}</span>
+                        </div>
+                        <div className="flex gap-4 items-center">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-stone-500 uppercase tracking-tighter">Wallet Balance</span>
+                                <span className="text-sm text-white font-mono">{Number(context.walletBalance).toFixed(4)} ETH</span>
+                            </div>
+                            <div className="w-[1px] h-6 bg-white/10" />
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-emerald-500 uppercase tracking-tighter">Vault Balance</span>
+                                <span className="text-sm text-emerald-400 font-mono">{(Number(context.currentVaultBalance) / 1e18).toFixed(4)} ETH</span>
+                            </div>
+                            <div className="flex gap-2 ml-4">
+                                <Button variant="outline" onClick={() => setIsDepositOpen(true)} className="gap-2 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-sm py-1 px-3">
+                                    <ArrowDownToLine className="w-3 h-3" /> Deposit
+                                </Button>
+                                <Button variant="outline" onClick={() => setIsWithdrawOpen(true)} className="gap-2 text-sm py-1 px-3">
+                                    <ArrowUpFromLine className="w-3 h-3" /> Withdraw
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        <Button variant="outline" onClick={() => setIsAddGuardianOpen(true)} className="gap-2">
+                            <UserPlus className="w-4 h-4" /> Add Guardian
+                        </Button>
+                        <Button variant="outline" onClick={() => setIsAddBeneficiaryOpen(true)} className="gap-2">
+                            <UserPlus className="w-4 h-4" /> Add Beneficiary
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Central Monitor */}
@@ -374,6 +426,84 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
                             Confirm Removal
                         </Button>
                     </div>
+                </div>
+            </Dialog>
+
+            {/* Deposit Modal */}
+            <Dialog isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} title="Deposit to Vault">
+                <div className="space-y-4">
+                    <p className="text-sm text-stone-400">
+                        Deposit ETH to your protocol vault. This amount will be distributed to beneficiaries according to their allocations.
+                    </p>
+                    <div>
+                        <label className="text-xs text-secondary uppercase">Amount (ETH)</label>
+                        <div className="flex gap-2 mt-1">
+                            <input
+                                type="number"
+                                step="0.001"
+                                className="flex-1 bg-stone-950 border border-stone-800 rounded p-2 text-white focus:border-emerald-500 outline-none"
+                                value={depositAmount}
+                                onChange={e => setDepositAmount(e.target.value)}
+                                placeholder="0.1"
+                            />
+                            <Button
+                                variant="outline"
+                                className="text-xs"
+                                onClick={() => setDepositAmount(String(Number(context.walletBalance)))}
+                            >
+                                MAX
+                            </Button>
+                        </div>
+                    </div>
+                    <Button
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white border-none"
+                        onClick={handleDeposit}
+                        isLoading={isLoading}
+                    >
+                        Deposit {depositAmount || '0'} ETH
+                    </Button>
+                </div>
+            </Dialog>
+
+            {/* Withdraw Modal */}
+            <Dialog isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} title="Withdraw from Vault">
+                <div className="space-y-4">
+                    <p className="text-sm text-stone-400">
+                        Withdraw ETH from your vault. You can only withdraw while the protocol is active.
+                    </p>
+                    <div className="p-3 bg-stone-900/50 rounded-lg">
+                        <span className="text-xs text-stone-500">Available Balance</span>
+                        <p className="text-lg text-emerald-400 font-mono">
+                            {(Number(context.currentVaultBalance) / 1e18).toFixed(4)} ETH
+                        </p>
+                    </div>
+                    <div>
+                        <label className="text-xs text-secondary uppercase">Amount (ETH)</label>
+                        <div className="flex gap-2 mt-1">
+                            <input
+                                type="number"
+                                step="0.001"
+                                className="flex-1 bg-stone-950 border border-stone-800 rounded p-2 text-white focus:border-emerald-500 outline-none"
+                                value={withdrawAmount}
+                                onChange={e => setWithdrawAmount(e.target.value)}
+                                placeholder="0.1"
+                            />
+                            <Button
+                                variant="outline"
+                                className="text-xs"
+                                onClick={() => setWithdrawAmount(String(Number(context.currentVaultBalance) / 1e18))}
+                            >
+                                MAX
+                            </Button>
+                        </div>
+                    </div>
+                    <Button
+                        className="w-full"
+                        onClick={handleWithdraw}
+                        isLoading={isLoading}
+                    >
+                        Withdraw {withdrawAmount || '0'} ETH
+                    </Button>
                 </div>
             </Dialog>
 

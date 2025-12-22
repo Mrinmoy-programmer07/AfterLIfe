@@ -35,12 +35,12 @@ const BeneficiaryList: React.FC<BeneficiaryListProps> = ({ beneficiaries, onUpda
                     >
                         <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-transparent via-emerald-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
-                                <h4 className="text-stone-200 font-medium">{beneficiary.name}</h4>
-                                <p className="text-xs text-stone-500 font-mono mt-0.5">{beneficiary.address}</p>
+                        <div className="flex justify-between items-start mb-2 gap-4">
+                            <div className="min-w-0 flex-1">
+                                <h4 className="text-stone-200 font-medium truncate">{beneficiary.name}</h4>
+                                <p className="text-xs text-stone-500 font-mono mt-0.5 truncate">{beneficiary.address}</p>
                             </div>
-                            <div className="flex flex-col items-end gap-2">
+                            <div className="flex flex-col items-end gap-2 flex-shrink-0">
                                 <div className="text-right">
                                     <span className="text-xl font-light text-white">{beneficiary.allocation}%</span>
                                     <p className="text-[10px] text-stone-500 uppercase">Share</p>

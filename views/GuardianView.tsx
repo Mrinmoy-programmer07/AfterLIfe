@@ -8,7 +8,7 @@ import { formatDuration } from '../services/mockService';
 const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
     const [isConfirming, setIsConfirming] = useState(false);
 
-    const remainingTime = context.inactivityThreshold - (Date.now() - context.lastHeartbeat);
+    const remainingTime = Math.max(0, context.inactivityThreshold - (Date.now() - context.lastHeartbeat));
     const remainingPct = Math.max(0, (remainingTime / context.inactivityThreshold) * 100);
 
     const canConfirm = context.state === ProtocolState.PENDING;
@@ -68,7 +68,7 @@ const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) =
                         </div>
                         <Progress
                             value={remainingPct}
-                            indicatorColor={remainingPct < 20 ? 'bg-amber-500' : 'bg-emerald-500'}
+                            indicatorColor={context.state === ProtocolState.EXECUTING ? 'bg-emerald-500/30' : (remainingPct < 20 ? 'bg-amber-500' : 'bg-emerald-500')}
                         />
                     </div>
 
@@ -83,18 +83,20 @@ const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) =
                         <div className="space-y-1 text-right">
                             <span className="text-[10px] text-stone-500 uppercase">Handshake Sync</span>
                             <div className="text-sm text-white font-mono">
-                                {remainingTime < -20000 ? 'READY' : (remainingTime < 0 ? 'BUFFER' : 'IDLE')}
+                                {context.state === ProtocolState.EXECUTING ? 'CONFIRMED' : (remainingTime < -20000 ? 'READY' : (remainingTime < 0 ? 'BUFFER' : 'IDLE'))}
                             </div>
                         </div>
                     </div>
                 </Card>
 
                 <Card className="p-8 flex flex-col items-center text-center space-y-4">
-                    <Lock className="w-8 h-8 text-stone-600" />
+                    <Lock className={`w-8 h-8 ${context.state === ProtocolState.EXECUTING ? 'text-emerald-500' : 'text-stone-600'}`} />
                     <p className="text-sm text-stone-400 max-w-xs">
-                        {canConfirm
-                            ? "Inactivity threshold reached. Confirm to initiate vesting protocol."
-                            : "Owner is active. No action required."}
+                        {context.state === ProtocolState.EXECUTING
+                            ? "Inactivity confirmed. Vesting protocol has been initiated."
+                            : (canConfirm
+                                ? "Inactivity threshold reached. Confirm to initiate vesting protocol."
+                                : "Owner is active. No action required.")}
                     </p>
                     <Button
                         onClick={handleConfirm}
@@ -103,7 +105,7 @@ const GuardianView: React.FC<{ context: ProtocolContextType }> = ({ context }) =
                         variant={canConfirm ? "primary" : "outline"}
                         className={`w-full h-12 ${canConfirm ? 'hover:bg-amber-500/20 border-amber-500/40' : ''}`}
                     >
-                        {canConfirm ? "Confirm Inactivity" : "System Normal"}
+                        {canConfirm ? "Confirm Inactivity" : (context.state === ProtocolState.EXECUTING ? "Protocol Executing" : "System Normal")}
                     </Button>
                 </Card>
             </main>

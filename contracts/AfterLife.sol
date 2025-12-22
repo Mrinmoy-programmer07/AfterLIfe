@@ -60,7 +60,6 @@ contract AfterLife {
     error ProtocolActive();
     error ProtocolDead();
     error VestingNotStarted();
-    error GracePeriodActive();
     error GracePeriodExpired();
     error ZeroAddress();
     error EmptyString();
@@ -85,7 +84,6 @@ contract AfterLife {
     error VaultInsolvency();
     error IndexOutOfBounds();
     error ThresholdTooShort();
-    error UseDepositFunction();
 
     // --- Events ---
     event ProtocolRegistered(address indexed owner, uint256 threshold);
@@ -117,10 +115,7 @@ contract AfterLife {
         Protocol storage p = protocols[_owner];
         if (!p.isDead) revert ProtocolActive();
         if (p.vestingStartTime == 0) revert VestingNotStarted();
-        
-        if (block.timestamp <= p.deathDeclarationTime + REVIVE_GRACE_PERIOD) {
-            revert GracePeriodActive();
-        }
+        // Grace period allows claiming - owner can revive but claimed funds stay with beneficiary
         _;
     }
 
@@ -145,6 +140,8 @@ contract AfterLife {
 
     function register(uint256 _thresholdSeconds) external {
         if (protocols[msg.sender].isRegistered) revert AlreadyRegistered();
+        
+        // User-configurable threshold (minimum 1 minute)
         if (_thresholdSeconds < MIN_THRESHOLD) revert ThresholdTooShort();
 
         protocols[msg.sender] = Protocol({
@@ -159,6 +156,14 @@ contract AfterLife {
         });
 
         emit ProtocolRegistered(msg.sender, _thresholdSeconds);
+    }
+
+    function updateInactivityThreshold(uint256 _newThreshold) external onlyRegistered {
+        // User-configurable threshold (minimum 1 minute)
+        if (_newThreshold < MIN_THRESHOLD) revert ThresholdTooShort();
+        
+        protocols[msg.sender].inactivityThreshold = _newThreshold;
+        emit ProtocolRegistered(msg.sender, _newThreshold); // Re-use event for simplicity
     }
 
     // --- Owner Actions ---
@@ -316,6 +321,8 @@ contract AfterLife {
         Protocol storage p = protocols[_owner];
         if (!p.isRegistered) revert NotRegistered();
         if (p.isDead) revert AlreadyDead();
+
+        // Use user-configured threshold directly
         if (block.timestamp <= p.lastHeartbeat + p.inactivityThreshold) revert OwnerStillActive();
 
         p.isDead = true;

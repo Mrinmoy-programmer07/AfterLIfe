@@ -29,14 +29,14 @@ const GuardianList: React.FC<GuardianListProps> = ({ guardians, onRemove }) => {
                         transition={{ delay: idx * 0.1 }}
                         className="group flex items-center justify-between p-3 rounded-xl bg-stone-950/50 hover:bg-stone-900/80 transition-all border border-transparent hover:border-stone-700"
                     >
-                        <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${guardian.isConfirmed ? 'bg-indigo-500/20 text-indigo-400' : 'bg-stone-800 text-stone-500'}`}>
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${guardian.isConfirmed ? 'bg-indigo-500/20 text-indigo-400' : 'bg-stone-800 text-stone-500'}`}>
                                 <Shield className="w-5 h-5" />
                             </div>
 
-                            <div>
-                                <p className="text-sm font-medium text-stone-200">{guardian.name}</p>
-                                <p className="text-xs text-stone-500 font-mono">{guardian.address}</p>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-stone-200 truncate">{guardian.name}</p>
+                                <p className="text-xs text-stone-500 font-mono truncate">{guardian.address}</p>
                             </div>
                         </div>
 

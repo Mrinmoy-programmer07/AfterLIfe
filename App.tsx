@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ProtocolState, UserRole, ProtocolContextType, AssetState, ProtocolEvent, Guardian, Beneficiary } from './types';
-import { INITIAL_ASSETS, INITIAL_GUARDIANS, INITIAL_BENEFICIARIES } from './services/mockService';
+import { formatDuration } from './services/mockService';
 import TemporalScene from './components/TemporalScene';
 import EntryView from './views/EntryView';
 import RoleSelectionView from './views/RoleSelectionView';
@@ -8,6 +8,7 @@ import OwnerView from './views/OwnerView';
 import GuardianView from './views/GuardianView';
 import BeneficiaryView from './views/BeneficiaryView';
 import { Button, Badge } from './components/ui/Primitives';
+import toast from 'react-hot-toast';
 import { EventLog } from './components/ui/EventLog';
 import { LogOut } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -33,15 +34,22 @@ const App: React.FC = () => {
   const [lastHeartbeat, setLastHeartbeat] = useState<number>(Date.now());
   const [inactivityThreshold, setInactivityThreshold] = useState<number>(INACTIVITY_THRESHOLD_MS_DEFAULT);
   const [vestingProgress, setVestingProgress] = useState(0);
-  const [assets, setAssets] = useState<AssetState[]>(INITIAL_ASSETS);
+  const [assets, setAssets] = useState<AssetState[]>([]);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [vaultBalance, setVaultBalance] = useState<bigint>(0n);
   const [currentVaultBalance, setCurrentVaultBalance] = useState<bigint>(0n);
 
   // Entity State
-  const [guardians, setGuardians] = useState<Guardian[]>(INITIAL_GUARDIANS);
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(INITIAL_BENEFICIARIES);
+  const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [targetOwner, setTargetOwner] = useState<string>(''); // The owner address we are currently monitoring
+
+  // Reset logic when switching roles or owners
+  useEffect(() => {
+    setState(ProtocolState.ACTIVE);
+    setLastHeartbeat(Date.now());
+    addEvent(`Session reset. Monitoring switched.`, 'INFO');
+  }, [role, targetOwner]);
 
   // Event Log State
   const [events, setEvents] = useState<ProtocolEvent[]>([]);
@@ -72,8 +80,7 @@ const App: React.FC = () => {
       setElapsedTime(now);
 
       // State Machine Logic (STICKY TRANSITIONS)
-      // DEMO: Use 2-minute threshold for state transitions
-      const thresholdForLogic = INACTIVITY_THRESHOLD_MS_DEFAULT;
+      const thresholdForLogic = INACTIVITY_THRESHOLD_MS_DEFAULT; // Hard override for demo
 
       const calculateNewState = () => {
         if (state === ProtocolState.EXECUTING || state === ProtocolState.COMPLETED) return state;
@@ -105,7 +112,7 @@ const App: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [lastHeartbeat, state]);
+  }, [lastHeartbeat, state, inactivityThreshold]);
 
   // Log State Changes
   useEffect(() => {
@@ -232,7 +239,7 @@ const App: React.FC = () => {
     currentVaultBalance,
     walletBalance: walletBalanceData ? formatEther(walletBalanceData.value) : '0.00',
     lastHeartbeat,
-    inactivityThreshold: INACTIVITY_THRESHOLD_MS_DEFAULT, // HARD OVERRIDE FOR DEMO VISUALS
+    inactivityThreshold: INACTIVITY_THRESHOLD_MS_DEFAULT, // HARD OVERRIDE FOR DEMO
     proveLife,
     confirmInactivity,
     assets,
@@ -262,9 +269,6 @@ const App: React.FC = () => {
           const ownerToFetch = targetOwner || address;
           if (!ownerToFetch) return;
 
-          // Force demo timer immediately
-          setInactivityThreshold(INACTIVITY_THRESHOLD_MS_DEFAULT);
-
           // 1. Fetch Entities
           const _guardians = await getGuardians(ownerToFetch);
           setGuardians(_guardians.map(g => ({
@@ -291,6 +295,7 @@ const App: React.FC = () => {
             const newHeartbeat = protocolState.lastHeartbeat;
 
             setLastHeartbeat(newHeartbeat);
+            setInactivityThreshold(Math.min(protocolState.inactivityThreshold, INACTIVITY_THRESHOLD_MS_DEFAULT));
             setVaultBalance(protocolState.initialVaultBalance);
             setCurrentVaultBalance(protocolState.currentVaultBalance);
             setVestingStartTime(protocolState.vestingStartTime > 0 ? protocolState.vestingStartTime : null);
@@ -301,7 +306,7 @@ const App: React.FC = () => {
             } else {
               const now = Date.now();
               const elapsed = now - protocolState.lastHeartbeat;
-              const threshold = INACTIVITY_THRESHOLD_MS_DEFAULT;
+              const threshold = inactivityThreshold;
 
               let calculatedState = ProtocolState.ACTIVE;
               if (elapsed > threshold + SYNC_BUFFER_MS) {
@@ -349,7 +354,7 @@ const App: React.FC = () => {
         addEvent(`Guardian ${currentAddr.slice(0, 6)}... authenticated`, 'INFO');
       } else {
         addEvent(`Access Denied: ${currentAddr.slice(0, 6)}... is not a Guardian for ${targetOwnerAddr.slice(0, 6)}`, 'WARNING');
-        alert("Access Denied: Your wallet address is not listed as a Guardian for this Owner.");
+        toast.error("Access Denied: Your wallet is not listed as a Guardian for this Owner.");
       }
     }
     else if (selectedRole === UserRole.BENEFICIARY) {
@@ -365,7 +370,7 @@ const App: React.FC = () => {
         addEvent(`Beneficiary ${currentAddr.slice(0, 6)}... authenticated`, 'INFO');
       } else {
         addEvent(`Access Denied: ${currentAddr.slice(0, 6)}... is not a Beneficiary for ${targetOwnerAddr.slice(0, 6)}`, 'WARNING');
-        alert("Access Denied: Your wallet address is not listed as a Beneficiary for this Owner.");
+        toast.error("Access Denied: Your wallet is not listed as a Beneficiary for this Owner.");
       }
     }
     else if (selectedRole === UserRole.OWNER) {
@@ -386,17 +391,17 @@ const App: React.FC = () => {
       // Prompt to register
       const shouldRegister = window.confirm(
         "You are not registered as a protocol owner yet. Would you like to register now?\n\n" +
-        "This will create your own AfterLife protocol instance with a 30-day inactivity threshold."
+        "This will create your own AfterLife protocol instance with a 2-minute inactivity threshold."
       );
       if (shouldRegister) {
         try {
           addEvent('Registering new protocol owner...', 'INFO');
-          await register(30 * 24 * 60 * 60); // 30 days in seconds
+          await register(120); // 2 minutes in seconds for demo
           setRole(UserRole.OWNER);
           addEvent(`Successfully registered! Welcome, ${walletAddress.slice(0, 6)}...`, 'INFO');
         } catch (err: any) {
           addEvent(`Registration failed: ${err.message}`, 'WARNING');
-          alert("Registration failed. Please try again.");
+          toast.error("Registration failed. Please try again.");
         }
       }
     }

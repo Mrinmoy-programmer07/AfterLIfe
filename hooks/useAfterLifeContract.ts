@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
-import { formatEther } from 'viem';
+import { formatEther, parseEther } from 'viem';
 
 // @ts-ignore - JSON import
 import AfterLifeArtifact from '../artifacts/contracts/AfterLife.sol/AfterLife.json';
 
-// Arbitrum Sepolia contract address
-const CONTRACT_ADDRESS = "0x447c6c1844694449bc0A32f52a8b7EEDb303b42A";
+// Arbitrum Sepolia contract address (Deployed: 2025-12-22)
+const CONTRACT_ADDRESS = "0xCbAbE6d1E0956fd1f39FFB5BF21B70C479F40E06";
 
 export const useAfterLifeContract = () => {
     const { isConnected, chain, address: userAddress } = useAccount();
@@ -19,21 +19,43 @@ export const useAfterLifeContract = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // --- Core Transaction Handler (Ultra-Simple) ---
+    // --- Core Transaction Handler (Resilient & Informative) ---
     const handleTransaction = async (functionName: string, args: any[], value?: bigint) => {
         setIsLoading(true);
         setError(null);
 
         try {
+            if (!publicClient) throw new Error("Public client not initialized");
+
+            // 1. Pre-flight Simulation to catch reverts early
+            try {
+                await publicClient.simulateContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: AfterLifeArtifact.abi,
+                    functionName,
+                    args,
+                    value,
+                    account: userAddress,
+                } as any);
+            } catch (simErr: any) {
+                // Extract revert reason if possible
+                const reason = simErr.shortMessage || simErr.details || simErr.message;
+                console.error(`Simulation failed for ${functionName}:`, simErr);
+                throw new Error(`On-chain check failed: ${reason}`);
+            }
+
+            // 2. Execute with hard gas limit safety
             const hash = await writeContractAsync({
                 address: CONTRACT_ADDRESS,
                 abi: AfterLifeArtifact.abi,
                 functionName,
                 args,
                 value,
+                // Hard limit to prevent MetaMask "insanity fees" during estimation drift
+                gas: 1000000n,
             } as any);
 
-            return await publicClient!.waitForTransactionReceipt({ hash });
+            return await publicClient.waitForTransactionReceipt({ hash });
         } catch (err: any) {
             const msg = err.shortMessage || err.message || "Transaction failed";
             setError(msg);
@@ -51,6 +73,10 @@ export const useAfterLifeContract = () => {
 
     const proveLife = async () => {
         return handleTransaction('proveLife', []);
+    };
+
+    const updateInactivityThreshold = async (newThresholdSeconds: number) => {
+        return handleTransaction('updateInactivityThreshold', [BigInt(newThresholdSeconds)]);
     };
 
     const addGuardian = async (name: string, guardianAddress: string) => {
@@ -79,6 +105,21 @@ export const useAfterLifeContract = () => {
 
     const removeBeneficiary = async (beneficiaryAddress: string) => {
         return handleTransaction('removeBeneficiary', [beneficiaryAddress]);
+    };
+
+    // --- Deposit & Withdraw ---
+
+    const deposit = async (amountEth: string) => {
+        const value = parseEther(amountEth);
+        return handleTransaction('deposit', [], value);
+    };
+
+    const withdraw = async (amountWei: bigint) => {
+        return handleTransaction('withdraw', [amountWei]);
+    };
+
+    const setGuardianFixed = async (guardianAddress: string, isFixed: boolean) => {
+        return handleTransaction('setGuardianFixed', [guardianAddress, isFixed]);
     };
 
     // --- Guardian Functions ---
@@ -248,6 +289,45 @@ export const useAfterLifeContract = () => {
         }
     };
 
+    const getClaimableAmount = async (ownerAddress: string, beneficiaryAddress: string) => {
+        if (!publicClient) return null;
+        try {
+            const result = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'getClaimableAmount',
+                args: [ownerAddress, beneficiaryAddress],
+            } as any) as [bigint, bigint, bigint];
+            return {
+                claimable: result[0],
+                totalEntitlement: result[1],
+                alreadyClaimed: result[2],
+            };
+        } catch (e) {
+            console.error('Error fetching claimable amount:', e);
+            return null;
+        }
+    };
+
+    const getReviveStatus = async (ownerAddress: string) => {
+        if (!publicClient) return null;
+        try {
+            const result = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: AfterLifeArtifact.abi,
+                functionName: 'getReviveStatus',
+                args: [ownerAddress],
+            } as any) as [boolean, bigint];
+            return {
+                canRevive: result[0],
+                timeRemaining: Number(result[1]) * 1000,
+            };
+        } catch (e) {
+            console.error('Error fetching revive status:', e);
+            return null;
+        }
+    };
+
     return {
         isLoading,
         error,
@@ -258,6 +338,9 @@ export const useAfterLifeContract = () => {
         addBeneficiary,
         removeGuardian,
         removeBeneficiary,
+        deposit,
+        withdraw,
+        setGuardianFixed,
         // Guardian functions
         confirmInactivity,
         // Beneficiary functions
@@ -267,6 +350,8 @@ export const useAfterLifeContract = () => {
         getGuardians,
         getBeneficiaries,
         isOwner,
+        getClaimableAmount,
+        getReviveStatus,
         // Misc
         contractAddress: CONTRACT_ADDRESS,
         publicClient,
