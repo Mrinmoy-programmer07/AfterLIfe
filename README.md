@@ -61,8 +61,9 @@ stateDiagram-v2
 - **Animations:** Framer Motion + GSAP
 
 ### 4. Primary Contract
-- **Address:** `0x447c6c1844694449bc0A32f52a8b7EEDb303b42A`
+- **Address:** `0xA39F43685807dD2155b01C404083a43834B98840`
 - **Network:** Arbitrum Sepolia (Chain ID: 421614)
+- **Platform Fee:** 10% on all beneficiary claims
 
 ---
 

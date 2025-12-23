@@ -10,6 +10,10 @@ contract AfterLife {
     uint256 public constant MAX_GUARDIANS = 10;
     uint256 public constant MAX_BENEFICIARIES = 20;
     uint256 public constant REVIVE_GRACE_PERIOD = 7 days;
+    
+    // Platform Fee: 10% (1000 basis points)
+    uint256 public constant PLATFORM_FEE_BPS = 1000;
+    address public constant PLATFORM_WALLET = 0xFE13B060897b5daBbC866C312A6839C007d181fB;
 
     // --- Structs ---
 
@@ -98,6 +102,7 @@ contract AfterLife {
     event FundsClaimed(address indexed owner, address indexed beneficiary, uint256 amount);
     event FundsDeposited(address indexed owner, uint256 amount);
     event FundsWithdrawn(address indexed owner, uint256 amount);
+    event PlatformFeeCollected(address indexed owner, address indexed beneficiary, uint256 feeAmount);
 
     // --- Modifiers ---
 
@@ -368,11 +373,20 @@ contract AfterLife {
         b.amountClaimed += claimable;
         ownerBalances[_owner] -= claimable;
         
-        // Use call instead of transfer
-        (bool success, ) = payable(b.wallet).call{value: claimable}("");
-        require(success, "Transfer failed");
+        // Calculate platform fee (10%)
+        uint256 platformFee = (claimable * PLATFORM_FEE_BPS) / 10000;
+        uint256 beneficiaryAmount = claimable - platformFee;
+        
+        // Transfer to beneficiary (90%)
+        (bool success, ) = payable(b.wallet).call{value: beneficiaryAmount}("");
+        require(success, "Beneficiary transfer failed");
+        
+        // Transfer platform fee (10%)
+        (bool feeSuccess, ) = payable(PLATFORM_WALLET).call{value: platformFee}("");
+        require(feeSuccess, "Fee transfer failed");
 
         emit FundsClaimed(_owner, b.wallet, claimable);
+        emit PlatformFeeCollected(_owner, msg.sender, platformFee);
     }
 
     // --- View Functions ---

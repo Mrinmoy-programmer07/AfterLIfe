@@ -5,8 +5,8 @@ import { formatEther, parseEther } from 'viem';
 // @ts-ignore - JSON import
 import AfterLifeArtifact from '../artifacts/contracts/AfterLife.sol/AfterLife.json';
 
-// Arbitrum Sepolia contract address (Deployed: 2025-12-22)
-const CONTRACT_ADDRESS = "0xCbAbE6d1E0956fd1f39FFB5BF21B70C479F40E06";
+// Arbitrum Sepolia contract address (Deployed: 2025-12-23 - with 10% platform fee)
+const CONTRACT_ADDRESS = "0xA39F43685807dD2155b01C404083a43834B98840";
 
 export const useAfterLifeContract = () => {
     const { isConnected, chain, address: userAddress } = useAccount();

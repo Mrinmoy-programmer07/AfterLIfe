@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "C:\\Users\\mrinm\\OneDrive\\Desktop\\Projects\\cryptowill\\contracts\\AfterLife.sol": {
-      "lastModificationDate": 1766392100218,
-      "contentHash": "e239b80559a6c4756de1322da1e0dda1",
+      "lastModificationDate": 1766505881271,
+      "contentHash": "bd9145838e0a0c509ebd1730f0ade587",
       "sourceName": "contracts/AfterLife.sol",
       "solcConfig": {
         "version": "0.8.20",

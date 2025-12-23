@@ -120,6 +120,11 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
                                     <div className="text-lg text-emerald-400 font-medium">
                                         {currentUser ? claimableEth.toFixed(4) : '0.0000'} ETH
                                     </div>
+                                    {currentUser && claimableEth > 0 && (
+                                        <div className="text-[10px] text-stone-500 mt-1">
+                                            You receive: {(claimableEth * 0.9).toFixed(4)} ETH
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="text-center w-1/2">
                                     <div className="text-xs text-stone-500 uppercase">Locked</div>
@@ -129,12 +134,20 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
                                 </div>
                             </div>
 
+                            {/* Platform Fee Notice */}
+                            <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+                                <p className="text-[11px] text-amber-400/80 leading-relaxed">
+                                    ⚠️ A <span className="font-semibold">10% platform fee</span> is deducted from each claim.
+                                    You will receive 90% of the claimable amount.
+                                </p>
+                            </div>
+
                             <Button
                                 onClick={handleClaim}
                                 disabled={!currentUser || claimableEth <= 0}
                                 className={`w-full mt-4 ${currentUser && claimableEth > 0 ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'opacity-50 cursor-not-allowed'}`}
                             >
-                                {!currentUser ? 'Access Denied' : claimableEth > 0 ? 'Claim Funds' : 'Pending Vesting'}
+                                {!currentUser ? 'Access Denied' : claimableEth > 0 ? `Claim ${(claimableEth * 0.9).toFixed(4)} ETH` : 'Pending Vesting'}
                             </Button>
                         </div>
                     </Card>
@@ -163,8 +176,8 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
                     </div>
                 </div>
 
-            </main>
-        </motion.div>
+            </main >
+        </motion.div >
     );
 };
 
