@@ -5,19 +5,33 @@ import { formatEther, parseEther } from 'viem';
 // @ts-ignore - JSON import
 import AfterLifeArtifact from '../artifacts/contracts/AfterLife.sol/AfterLife.json';
 
-// Arbitrum Sepolia contract address (Deployed: 2025-12-23 - with 10% platform fee)
-const CONTRACT_ADDRESS = "0xA39F43685807dD2155b01C404083a43834B98840";
+// Multi-chain support
+import { useChain } from '../contexts/ChainContext';
+import { SUPPORTED_CHAINS } from '../config/chainConfig';
 
 export const useAfterLifeContract = () => {
     const { isConnected, chain, address: userAddress } = useAccount();
     const { writeContractAsync } = useWriteContract();
-    const publicClient = usePublicClient();
 
-    // Arbitrum Sepolia
-    const activeChainId = chain?.id || 421614;
+    // Get dynamic contract address from chain context
+    const { contractAddress, isCorrectChain, chainInfo, selectedChainId } = useChain();
+
+    // CRITICAL: Use publicClient for the SELECTED chain, not wallet's current chain
+    // This ensures reads go to the correct chain even during network switching
+    const publicClient = usePublicClient({ chainId: selectedChainId });
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // --- Chain Validation ---
+    const validateChain = () => {
+        if (!contractAddress) {
+            throw new Error(`AfterLife contract not deployed on ${chainInfo.name} yet`);
+        }
+        if (!isCorrectChain) {
+            throw new Error(`Please switch your wallet to ${chainInfo.name}`);
+        }
+    };
 
     // --- Core Transaction Handler (Resilient & Informative) ---
     const handleTransaction = async (functionName: string, args: any[], value?: bigint) => {
@@ -25,39 +39,92 @@ export const useAfterLifeContract = () => {
         setError(null);
 
         try {
+            // Validate chain before any transaction
+            validateChain();
+
             if (!publicClient) throw new Error("Public client not initialized");
 
             // 1. Pre-flight Simulation to catch reverts early
+            // NOTE: Mantle RPC sometimes has issues with simulation, so we make it non-blocking
+            const isMantle = selectedChainId === SUPPORTED_CHAINS.MANTLE_SEPOLIA;
+
             try {
                 await publicClient.simulateContract({
-                    address: CONTRACT_ADDRESS,
+                    address: contractAddress as `0x${string}`,
                     abi: AfterLifeArtifact.abi,
                     functionName,
                     args,
                     value,
                     account: userAddress,
                 } as any);
+                console.log(`✅ Simulation passed for ${functionName}`);
             } catch (simErr: any) {
-                // Extract revert reason if possible
-                const reason = simErr.shortMessage || simErr.details || simErr.message;
                 console.error(`Simulation failed for ${functionName}:`, simErr);
-                throw new Error(`On-chain check failed: ${reason}`);
+
+                // On Mantle, simulation can fail due to RPC issues but tx might still succeed
+                // Log but don't block on Mantle
+                if (isMantle) {
+                    console.warn(`⚠️ Mantle: Proceeding despite simulation failure (RPC may have issues)`);
+                } else {
+                    // For other chains, check for common error patterns
+                    const errString = JSON.stringify(simErr).toLowerCase();
+
+                    if (errString.includes('insufficient') || errString.includes('balance')) {
+                        throw new Error(`Insufficient ${chainInfo.nativeCurrency.symbol} for gas. Get testnet tokens from a faucet.`);
+                    }
+
+                    if (errString.includes('json-rpc') || errString.includes('internal error')) {
+                        throw new Error(`RPC Error: You may need ${chainInfo.nativeCurrency.symbol} tokens for gas on ${chainInfo.name}. Try a faucet!`);
+                    }
+
+                    const reason = simErr.shortMessage || simErr.details || simErr.message;
+                    throw new Error(`On-chain check failed: ${reason}`);
+                }
             }
 
-            // 2. Execute with hard gas limit safety
-            const hash = await writeContractAsync({
-                address: CONTRACT_ADDRESS,
+            // 2. Build transaction config - MINIMAL for debugging
+            console.log(`📝 Preparing ${functionName} for ${chainInfo.name}...`);
+            console.log(`   Contract: ${contractAddress}`);
+            console.log(`   Args:`, args);
+            console.log(`   Chain ID: ${selectedChainId}`);
+            console.log(`   Is Mantle: ${isMantle}`);
+
+            // Try absolute minimal config first
+            const txConfig: any = {
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName,
                 args,
-                value,
-                // Hard limit to prevent MetaMask "insanity fees" during estimation drift
-                gas: 1000000n,
-            } as any);
+            };
 
+            // Only add value if present
+            if (value) {
+                txConfig.value = value;
+            }
+
+            // For Mantle, don't specify gas - let wallet estimate
+            // For other chains, use our gas limit
+            if (!isMantle) {
+                txConfig.gas = 1000000n;
+            }
+
+            console.log(`📤 Sending transaction...`);
+            const hash = await writeContractAsync(txConfig);
+
+            console.log(`✅ Transaction sent: ${hash}`);
             return await publicClient.waitForTransactionReceipt({ hash });
         } catch (err: any) {
-            const msg = err.shortMessage || err.message || "Transaction failed";
+            console.error(`Transaction error for ${functionName}:`, err);
+            console.error('Full error object:', JSON.stringify(err, null, 2));
+
+            // Provide helpful error messages
+            let msg = err.shortMessage || err.message || "Transaction failed";
+
+            // Check for common MetaMask/RPC errors
+            if (msg.toLowerCase().includes('internal json-rpc') || msg.toLowerCase().includes('internal error')) {
+                msg = `Transaction failed on ${chainInfo.name}. Common causes:\n• No ${chainInfo.nativeCurrency.symbol} for gas (get from faucet)\n• Network congestion\n• RPC issues\n\nCheck browser console for details.`;
+            }
+
             setError(msg);
             throw err;
         } finally {
@@ -65,7 +132,9 @@ export const useAfterLifeContract = () => {
         }
     };
 
+
     // --- Owner Functions ---
+
 
     const register = async (thresholdSeconds: number) => {
         return handleTransaction('register', [BigInt(thresholdSeconds)]);
@@ -143,7 +212,7 @@ export const useAfterLifeContract = () => {
 
         try {
             const protocol = await publicClient.readContract({
-                address: CONTRACT_ADDRESS,
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName: 'protocols',
                 args: [targetOwner],
@@ -151,7 +220,7 @@ export const useAfterLifeContract = () => {
             } as any) as any;
 
             const currentBalance = await publicClient.readContract({
-                address: CONTRACT_ADDRESS,
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName: 'getOwnerBalance',
                 args: [targetOwner],
@@ -182,7 +251,7 @@ export const useAfterLifeContract = () => {
 
         try {
             const count = await publicClient.readContract({
-                address: CONTRACT_ADDRESS,
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName: 'getGuardianCount',
                 args: [targetOwner],
@@ -192,7 +261,7 @@ export const useAfterLifeContract = () => {
             const guardians: any[] = [];
             for (let i = 0; i < Number(count); i++) {
                 const guardianAddr = await publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
+                    address: contractAddress as `0x${string}`,
                     abi: AfterLifeArtifact.abi,
                     functionName: 'getGuardianAt',
                     args: [targetOwner, BigInt(i)],
@@ -200,7 +269,7 @@ export const useAfterLifeContract = () => {
                 } as any) as string;
 
                 const details = await publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
+                    address: contractAddress as `0x${string}`,
                     abi: AfterLifeArtifact.abi,
                     functionName: 'guardians',
                     args: [targetOwner, guardianAddr],
@@ -228,7 +297,7 @@ export const useAfterLifeContract = () => {
 
         try {
             const count = await publicClient.readContract({
-                address: CONTRACT_ADDRESS,
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName: 'getBeneficiaryCount',
                 args: [targetOwner],
@@ -238,7 +307,7 @@ export const useAfterLifeContract = () => {
             const beneficiaries: any[] = [];
             for (let i = 0; i < Number(count); i++) {
                 const benAddr = await publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
+                    address: contractAddress as `0x${string}`,
                     abi: AfterLifeArtifact.abi,
                     functionName: 'getBeneficiaryAt',
                     args: [targetOwner, BigInt(i)],
@@ -246,7 +315,7 @@ export const useAfterLifeContract = () => {
                 } as any) as string;
 
                 const details = await publicClient.readContract({
-                    address: CONTRACT_ADDRESS,
+                    address: contractAddress as `0x${string}`,
                     abi: AfterLifeArtifact.abi,
                     functionName: 'beneficiaries',
                     args: [targetOwner, benAddr],
@@ -277,7 +346,7 @@ export const useAfterLifeContract = () => {
 
         try {
             const result = await publicClient.readContract({
-                address: CONTRACT_ADDRESS,
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName: 'isOwner',
                 args: [targetAddress],
@@ -293,7 +362,7 @@ export const useAfterLifeContract = () => {
         if (!publicClient) return null;
         try {
             const result = await publicClient.readContract({
-                address: CONTRACT_ADDRESS,
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName: 'getClaimableAmount',
                 args: [ownerAddress, beneficiaryAddress],
@@ -313,7 +382,7 @@ export const useAfterLifeContract = () => {
         if (!publicClient) return null;
         try {
             const result = await publicClient.readContract({
-                address: CONTRACT_ADDRESS,
+                address: contractAddress as `0x${string}`,
                 abi: AfterLifeArtifact.abi,
                 functionName: 'getReviveStatus',
                 args: [ownerAddress],
@@ -353,7 +422,9 @@ export const useAfterLifeContract = () => {
         getClaimableAmount,
         getReviveStatus,
         // Misc
-        contractAddress: CONTRACT_ADDRESS,
+        contractAddress,
+        chainInfo,
+        selectedChainId,
         publicClient,
         userAddress
     };

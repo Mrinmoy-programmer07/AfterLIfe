@@ -16,6 +16,7 @@ import { useAccount, useDisconnect, useBalance } from 'wagmi';
 import { formatEther } from 'viem';
 import { useAfterLifeContract } from './hooks/useAfterLifeContract';
 import AnimatedLogo from './components/AnimatedLogo';
+import { useChain } from './contexts/ChainContext';
 
 const INACTIVITY_THRESHOLD_MS_DEFAULT = 120000; // 2 minutes for demo purposes
 const SYNC_BUFFER_MS = 20000; // 20s safety margin for blockchain clock lag
@@ -39,12 +40,29 @@ const App: React.FC = () => {
   const [vaultBalance, setVaultBalance] = useState<bigint>(0n);
   const [currentVaultBalance, setCurrentVaultBalance] = useState<bigint>(0n);
 
+  // Multi-chain context - must be early for all effects to use
+  const { selectedChainId, chainInfo } = useChain();
+
   // Entity State
   const [guardians, setGuardians] = useState<Guardian[]>([]);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [targetOwner, setTargetOwner] = useState<string>(''); // The owner address we are currently monitoring
 
-  // Reset logic when switching roles or owners
+  // Track previous chain to detect chain changes
+  const previousChainId = useRef<number | undefined>(undefined);
+
+  // Reset logic when switching roles, owners, OR chains
+  useEffect(() => {
+    // If chain changed, reset to role selection
+    if (previousChainId.current !== undefined && previousChainId.current !== selectedChainId) {
+      setRole(UserRole.NONE);
+      setTargetOwner('');
+      addEvent(`Switched to ${chainInfo?.name || 'new chain'}. Please select your role.`, 'INFO');
+    }
+    previousChainId.current = selectedChainId;
+  }, [selectedChainId]);
+
+  // Reset state when role or target owner changes
   useEffect(() => {
     setState(ProtocolState.ACTIVE);
     setLastHeartbeat(Date.now());
@@ -333,7 +351,7 @@ const App: React.FC = () => {
       const poll = setInterval(syncData, 15000);
       return () => clearInterval(poll);
     }
-  }, [isConnected, address, targetOwner]);
+  }, [isConnected, address, targetOwner, selectedChainId]);
 
   // Auto-Route removed. We now wait for user selection.
 
@@ -468,7 +486,7 @@ const App: React.FC = () => {
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             className="fixed top-6 left-6 z-40 flex items-center gap-3 cursor-pointer group"
-            onClick={() => setRole(UserRole.NONE)} // Acting as a Home button
+            onClick={() => setRole(UserRole.NONE)}
           >
             <AnimatedLogo size={40} />
             <span className="text-white font-thin tracking-widest text-lg group-hover:text-emerald-400 transition-colors uppercase">AfterLife</span>

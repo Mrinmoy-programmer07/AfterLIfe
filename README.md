@@ -1,9 +1,10 @@
 # AfterLife | Temporal Asset Protocol ⏳⚖️
 
-AfterLife is a decentralized "dead man's switch" protocol built on Arbitrum Sepolia. It ensures your digital assets are securely distributed to beneficiaries if you become inactive for a defined period, verified by a distributed network of guardians.
+AfterLife is a decentralized "dead man's switch" protocol with **multi-chain support** on **Arbitrum Sepolia** and **Mantle Sepolia**. It ensures your digital assets are securely distributed to beneficiaries if you become inactive for a defined period, verified by a distributed network of guardians.
 
 ## 🌟 Key Features
 
+- **🔗 Multi-Chain Support:** Deploy and manage your inheritance across Arbitrum and Mantle networks independently.
 - **Multi-Tenant Protocol:** Every user has their own isolated inheritance logic within a single master contract.
 - **Heartbeat Verification:** Owners prove "liveliness" through simple on-chain interactions.
 - **Guardian Consensus:** Trusted entities (Guardians) can trigger the inheritance process if the heartbeat threshold is exceeded.
@@ -14,12 +15,12 @@ AfterLife is a decentralized "dead man's switch" protocol built on Arbitrum Sepo
 
 ## 🌌 System Overview
 
-AfterLife is a decentralized inheritance protocol on Arbitrum that uses time as a neutral executor. It operates on a **"Dead Man's Switch"** principle: lack of activity from the owner triggers a state change that eventually unlocks assets for beneficiaries.
+AfterLife is a decentralized inheritance protocol that uses time as a neutral executor. It operates on a **"Dead Man's Switch"** principle: lack of activity from the owner triggers a state change that eventually unlocks assets for beneficiaries.
 
 ### High-Level Components
-1.  **Smart Contract (Arbitrum)**: The "Executor". Holds logic, state, and permissions.
+1.  **Smart Contract (Multi-Chain)**: The "Executor". Holds logic, state, and permissions.
 2.  **Frontend (React/Vite)**: The "Interface". Connects users (Owner, Guardians, Beneficiaries) to the contract.
-3.  **Arbitrum Network**: The "Infrastructure". Provides security, low fees, and timestamp validity.
+3.  **L2 Networks**: Provides security, low fees, and timestamp validity.
 
 ---
 
@@ -54,16 +55,20 @@ stateDiagram-v2
 ```
 
 ### 3. Core Stack
-- **Smart Contracts:** Solidity (Deployed on Arbitrum Sepolia)
+- **Smart Contracts:** Solidity (Deployed on Arbitrum Sepolia & Mantle Sepolia)
 - **Frontend:** React + Vite + TypeScript
 - **Web3 Integration:** Wagmi + Viem + TanStack Query
 - **Styling:** Tailwind CSS + Custom Glassmorphism Engine
 - **Animations:** Framer Motion + GSAP
 
-### 4. Primary Contract
-- **Address:** `0xA39F43685807dD2155b01C404083a43834B98840`
-- **Network:** Arbitrum Sepolia (Chain ID: 421614)
-- **Platform Fee:** 10% on all beneficiary claims
+### 4. Deployed Contracts
+
+| Network | Chain ID | Contract Address | Explorer |
+|---------|----------|------------------|----------|
+| **Arbitrum Sepolia** | 421614 | `0xA39F43685807dD2155b01C404083a43834B98840` | [View on Arbiscan](https://sepolia.arbiscan.io/address/0xA39F43685807dD2155b01C404083a43834B98840) |
+| **Mantle Sepolia** | 5003 | `0x8fD3A16F905dF98907B3739bCD0E31a7949cd2D2` | [View on Mantlescan](https://explorer.sepolia.mantle.xyz/address/0x8fD3A16F905dF98907B3739bCD0E31a7949cd2D2) |
+
+**Platform Fee:** 10% on all beneficiary claims
 
 ---
 
