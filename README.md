@@ -1,135 +1,268 @@
 # AfterLife | Temporal Asset Protocol ⏳⚖️
 
-AfterLife is a decentralized "dead man's switch" protocol with **multi-chain support** on **Arbitrum Sepolia** and **Mantle Sepolia**. It ensures your digital assets are securely distributed to beneficiaries if you become inactive for a defined period, verified by a distributed network of guardians.
+<div align="center">
 
-## 🌟 Key Features
+**A decentralized "dead man's switch" protocol for secure crypto inheritance**
 
-- **🔗 Multi-Chain Support:** Deploy and manage your inheritance across Arbitrum and Mantle networks independently.
-- **Multi-Tenant Protocol:** Every user has their own isolated inheritance logic within a single master contract.
-- **Heartbeat Verification:** Owners prove "liveliness" through simple on-chain interactions.
-- **Guardian Consensus:** Trusted entities (Guardians) can trigger the inheritance process if the heartbeat threshold is exceeded.
-- **Progressive Vesting:** Supports both **Linear** and **Cliff** vesting schedules for beneficiaries.
-- **Premium UI:** A high-end, glassmorphic dashboard built with React, Framer Motion, and Three.js.
+[![Multi-Chain](https://img.shields.io/badge/Multi--Chain-Arbitrum%20%7C%20Mantle-blue)](https://github.com)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.20-363636)](https://soliditylang.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
----
+[Live Demo](#) • [Documentation](#-architecture) • [Deploy](#-getting-started)
 
-## 🌌 System Overview
-
-AfterLife is a decentralized inheritance protocol that uses time as a neutral executor. It operates on a **"Dead Man's Switch"** principle: lack of activity from the owner triggers a state change that eventually unlocks assets for beneficiaries.
-
-### High-Level Components
-1.  **Smart Contract (Multi-Chain)**: The "Executor". Holds logic, state, and permissions.
-2.  **Frontend (React/Vite)**: The "Interface". Connects users (Owner, Guardians, Beneficiaries) to the contract.
-3.  **L2 Networks**: Provides security, low fees, and timestamp validity.
+</div>
 
 ---
 
-## 🏗️ Architecture & System Design
+## 📖 Overview
 
-### 1. Smart Contract Entities
+AfterLife ensures your digital assets are securely distributed to beneficiaries if you become inactive for a defined period. The protocol operates on a **"Dead Man's Switch"** principle — lack of activity triggers a state change that eventually unlocks assets for your chosen beneficiaries.
 
-| Entity | Role | Capabilities |
-| :--- | :--- | :--- |
-| **Owner** | The Asset Holder | Initialize Will, Add/Remove Guardians/Beneficiaries, Prove Life (Reset Timer), Cancel Inheritance. |
-| **Guardian** | The Oracle of Silence | Verify inactivity when threshold is met. Cannot withdraw funds. |
-| **Beneficiary** | The Receiver | Claim unlocked assets after the vesting period begins. |
+### Why AfterLife?
+- 🔐 **Trustless Execution** — No centralized authority controls your assets
+- ⏱️ **Time-Based Triggers** — Customizable inactivity thresholds
+- 🛡️ **Owner Override** — Cancel inheritance at any time with proof of life
+- 🔗 **Multi-Chain** — Deploy independently on Arbitrum and Mantle
 
-### 2. State Machine Logic
+---
 
-The protocol operates as a finite state machine to ensure security and owner control.
+## 🔗 Deployed Contracts
+
+### Mainnet (Coming Soon)
+
+### Testnets
+
+| Network | Chain ID | Contract Address | Explorer | Status |
+|---------|:--------:|------------------|----------|:------:|
+| **Arbitrum Sepolia** | 421614 | `0xA39F43685807dD2155b01C404083a43834B98840` | [Arbiscan ↗](https://sepolia.arbiscan.io/address/0xA39F43685807dD2155b01C404083a43834B98840) | ✅ Live |
+| **Mantle Sepolia** | 5003 | `0x8fD3A16F905dF98907B3739bCD0E31a7949cd2D2` | [Mantlescan ↗](https://explorer.sepolia.mantle.xyz/address/0x8fD3A16F905dF98907B3739bCD0E31a7949cd2D2) | ✅ Live |
+
+> 💡 **Platform Fee:** 10% on all beneficiary claims (sent to protocol treasury)
+
+---
+
+## 🏗️ Architecture
+
+### System Components
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           AFTERLIFE PROTOCOL                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   ┌──────────────┐     ┌──────────────┐     ┌──────────────┐            │
+│   │    OWNER     │     │   GUARDIAN   │     │ BENEFICIARY  │            │
+│   │   Register   │     │   Confirm    │     │    Claim     │            │
+│   │   Deposit    │     │  Inactivity  │     │   Assets     │            │
+│   │  Prove Life  │     │              │     │              │            │
+│   └──────┬───────┘     └──────┬───────┘     └──────┬───────┘            │
+│          │                    │                    │                     │
+│          └────────────────────┼────────────────────┘                     │
+│                               │                                          │
+│                    ┌──────────▼──────────┐                              │
+│                    │   SMART CONTRACT    │                              │
+│                    │   (Multi-Tenant)    │                              │
+│                    │                     │                              │
+│                    │  • State Machine    │                              │
+│                    │  • Fund Storage     │                              │
+│                    │  • Vesting Logic    │                              │
+│                    └──────────┬──────────┘                              │
+│                               │                                          │
+│          ┌────────────────────┼────────────────────┐                     │
+│          │                    │                    │                     │
+│   ┌──────▼──────┐      ┌──────▼──────┐     ┌──────▼──────┐              │
+│   │  ARBITRUM   │      │   MANTLE    │     │   FUTURE    │              │
+│   │   SEPOLIA   │      │   SEPOLIA   │     │   CHAINS    │              │
+│   └─────────────┘      └─────────────┘     └─────────────┘              │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Entity Roles
+
+| Entity | Role | Permissions |
+|--------|------|-------------|
+| **👤 Owner** | Asset Holder | Register, deposit/withdraw, add guardians/beneficiaries, prove life, revive |
+| **🛡️ Guardian** | Inactivity Oracle | Confirm owner inactivity (cannot touch funds) |
+| **💰 Beneficiary** | Asset Receiver | Claim allocated assets after vesting begins |
+
+---
+
+## 🔄 Protocol Flow
+
+### State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ACTIVE
-    ACTIVE --> INACTIVE_DETECTED: Time > Threshold
-    ACTIVE --> ACTIVE: Proof of Life (Owner Interaction)
+    [*] --> ACTIVE: Owner Registers
+
+    ACTIVE --> ACTIVE: Prove Life ♻️
+    ACTIVE --> WARNING: 70% Threshold
+    WARNING --> PENDING: Guardian Confirms
+    WARNING --> ACTIVE: Prove Life ♻️
     
-    INACTIVE_DETECTED --> CONFIRMATION_PENDING: Guardian Report
-    INACTIVE_DETECTED --> ACTIVE: Proof of Life
+    PENDING --> EXECUTING: Vesting Begins
+    PENDING --> ACTIVE: Owner Revives (7-day grace)
     
-    CONFIRMATION_PENDING --> INHERITANCE_ACTIVE: M-of-N Guardians Confirm
-    CONFIRMATION_PENDING --> ACTIVE: Proof of Life
-    
-    INHERITANCE_ACTIVE --> COMPLETED: All Assets Claimed
-    INHERITANCE_ACTIVE --> CANCELLED: Owner "Resurrection"
+    EXECUTING --> COMPLETED: All Claimed
+    EXECUTING --> ACTIVE: Owner Revives (7-day grace)
 ```
 
-### 3. Core Stack
-- **Smart Contracts:** Solidity (Deployed on Arbitrum Sepolia & Mantle Sepolia)
-- **Frontend:** React + Vite + TypeScript
-- **Web3 Integration:** Wagmi + Viem + TanStack Query
-- **Styling:** Tailwind CSS + Custom Glassmorphism Engine
-- **Animations:** Framer Motion + GSAP
+### User Flows
 
-### 4. Deployed Contracts
+#### 🟢 Owner Flow
+```
+Register → Add Guardians → Add Beneficiaries → Deposit Funds → Prove Life (Periodic)
+```
 
-| Network | Chain ID | Contract Address | Explorer |
-|---------|----------|------------------|----------|
-| **Arbitrum Sepolia** | 421614 | `0xA39F43685807dD2155b01C404083a43834B98840` | [View on Arbiscan](https://sepolia.arbiscan.io/address/0xA39F43685807dD2155b01C404083a43834B98840) |
-| **Mantle Sepolia** | 5003 | `0x8fD3A16F905dF98907B3739bCD0E31a7949cd2D2` | [View on Mantlescan](https://explorer.sepolia.mantle.xyz/address/0x8fD3A16F905dF98907B3739bCD0E31a7949cd2D2) |
+#### 🔵 Guardian Flow
+```
+Monitor Owner Status → Detect Inactivity → Confirm Inactivity → Wait for Vesting
+```
 
-**Platform Fee:** 10% on all beneficiary claims
-
----
-
-## 🛡️ Security & Resilience
-
-### 1. Security Model
-- **Owner Override**: The owner can call `proveLife` at ANY time to cancel the inheritance process and reclaim full control.
-- **Vesting Delay**: Funds are not released instantly. The `vestingDuration` provides a safety window for the owner to notice unauthorized guardian actions.
-- **Guardian Isolation**: Guardians can only confirm inactivity; they have zero permissions to move or withdraw funds.
-
-### 2. Resilience Measures
-The protocol is optimized for stable interaction:
-- **Forced Gas Limits:** Uses a 1,000,000 gas buffer to bypass Arbitrum's estimation errors.
-- **RPC Reliability:** Uses official and highly resilient RPC endpoints to avoid rate limits.
-- **Fail-Safe Write:** Gracefully handles RPC simulation failures by falling back to direct blockchain writing.
+#### 🟣 Beneficiary Flow
+```
+Wait for Execution State → Check Claimable Amount → Claim Assets → Receive Funds
+```
 
 ---
 
-## 🛠️ Getting Started
+## ⚙️ Technical Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Smart Contracts** | Solidity 0.8.20, Hardhat |
+| **Frontend** | React 18, Vite, TypeScript |
+| **Web3** | Wagmi v2, Viem, TanStack Query |
+| **Styling** | CSS3 (Glassmorphism), Framer Motion |
+| **3D Graphics** | Three.js, React Three Fiber |
+
+---
+
+## 🛡️ Security Model
+
+### Safety Mechanisms
+
+| Mechanism | Description |
+|-----------|-------------|
+| **Owner Override** | `proveLife()` cancels inheritance at ANY time |
+| **7-Day Grace Period** | Owner can revive even after execution starts |
+| **Vesting Delay** | Funds unlock gradually, not instantly |
+| **Guardian Isolation** | Guardians have ZERO fund access |
+| **Reentrancy Guards** | All transfers protected |
+
+### Smart Contract Security
+- ✅ Custom errors (gas efficient)
+- ✅ Strict modifiers for access control
+- ✅ Bounded arrays (max 10 guardians, 20 beneficiaries)
+- ✅ Pull-over-push for fund transfers
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
+- [Node.js](https://nodejs.org/) v18+
 - [pnpm](https://pnpm.io/)
-- [MetaMask](https://metamask.io/) with Arbitrum Sepolia configured.
+- [MetaMask](https://metamask.io/) wallet
 
-### Installation
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-3. Run the development server:
-   ```bash
-   pnpm run dev
-   ```
+### Quick Start
 
-### Deployment (Build)
-To generate production-ready files:
 ```bash
-pnpm build
+# Clone repository
+git clone https://github.com/your-repo/afterlife.git
+cd afterlife
+
+# Install dependencies
+pnpm install
+
+# Run development server
+pnpm dev
+```
+
+### Deploy Contract (Optional)
+
+```bash
+# Arbitrum Sepolia
+npx hardhat run scripts/deploy.js --network arbitrumSepolia
+
+# Mantle Sepolia
+npx hardhat run scripts/deploy.js --network mantleSepolia
 ```
 
 ---
 
 ## 📘 User Guide
 
-### 1. Owner Workflow
-- **Register:** Initialize your protocol by setting an inactivity threshold (e.g., 30 days).
-- **Add Guardians:** Assign trusted wallets to monitor your status.
-- **Configure Beneficiaries:** Set wallet addresses and their percentage of your vault.
-- **Prove Life:** Click "Prove Life" periodically to reset your heartbeat timer.
+### For Owners
 
-### 2. Guardian Workflow
-- Monitor the owner's status.
-- If the threshold is exceeded, the Guardian can "Confirm Inactivity" to begin asset distribution.
+1. **Connect Wallet** → Select network (Arbitrum or Mantle)
+2. **Register** → Set inactivity threshold (e.g., 30 days)
+3. **Add Guardians** → Trusted addresses to monitor you
+4. **Add Beneficiaries** → Set allocations (must total ≤100%)
+5. **Deposit Funds** → Transfer ETH/MNT to your vault
+6. **Prove Life** → Click periodically to stay active
 
-### 3. Beneficiary Workflow
-- Once the protocol is in the "Executing" state, beneficiaries can claim their allocated assets based on the vesting schedule.
+### For Guardians
+
+1. **Enter Owner Address** → Monitor their status
+2. **Wait for Threshold** → Inactivity timer must expire
+3. **Confirm Inactivity** → Triggers inheritance process
+
+### For Beneficiaries
+
+1. **Enter Owner Address** → Check your allocation
+2. **Wait for Execution** → Vesting must begin
+3. **Claim Assets** → Withdraw your share based on vesting schedule
 
 ---
 
+## 🌐 Network Configuration
+
+### Add to MetaMask
+
+<details>
+<summary><b>Arbitrum Sepolia</b></summary>
+
+| Setting | Value |
+|---------|-------|
+| Network Name | Arbitrum Sepolia |
+| RPC URL | `https://sepolia-rollup.arbitrum.io/rpc` |
+| Chain ID | `421614` |
+| Currency | ETH |
+| Explorer | `https://sepolia.arbiscan.io` |
+
+</details>
+
+<details>
+<summary><b>Mantle Sepolia</b></summary>
+
+| Setting | Value |
+|---------|-------|
+| Network Name | Mantle Sepolia Testnet |
+| RPC URL | `https://rpc.sepolia.mantle.xyz` |
+| Chain ID | `5003` |
+| Currency | MNT |
+| Explorer | `https://explorer.sepolia.mantle.xyz` |
+
+</details>
+
+### Faucets
+- **Arbitrum Sepolia**: [Alchemy Faucet](https://www.alchemy.com/faucets/arbitrum-sepolia)
+- **Mantle Sepolia**: [Mantle Faucet](https://faucet.sepolia.mantle.xyz)
+
 ---
 
+## 📄 License
 
+MIT License - see [LICENSE](LICENSE) for details.
 
+---
+
+<div align="center">
+
+**Built with ❤️ for the decentralized future**
+
+[⬆ Back to Top](#afterlife--temporal-asset-protocol-️)
+
+</div>
