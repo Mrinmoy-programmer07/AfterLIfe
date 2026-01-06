@@ -90,39 +90,41 @@ AfterLife ensures your digital assets are securely distributed to beneficiaries 
 
 ## 🔄 Protocol Flow
 
-### State Machine
+### Protocol States
 
-```mermaid
-stateDiagram-v2
-    [*] --> ACTIVE: Owner Registers
-
-    ACTIVE --> ACTIVE: Prove Life ♻️
-    ACTIVE --> WARNING: 70% Threshold
-    WARNING --> PENDING: Guardian Confirms
-    WARNING --> ACTIVE: Prove Life ♻️
-    
-    PENDING --> EXECUTING: Vesting Begins
-    PENDING --> ACTIVE: Owner Revives (7-day grace)
-    
-    EXECUTING --> COMPLETED: All Claimed
-    EXECUTING --> ACTIVE: Owner Revives (7-day grace)
+```
+ACTIVE → WARNING → PENDING → EXECUTING → COMPLETED
+   ↑__________|_________|_________|
+              (Owner can revive)
 ```
 
-### User Flows
+### State Transitions
 
-#### 🟢 Owner Flow
+| From | To | Trigger |
+|------|-----|---------|
+| `ACTIVE` | `WARNING` | Inactivity reaches 70% of threshold |
+| `WARNING` | `PENDING` | Guardian confirms inactivity |
+| `PENDING` | `EXECUTING` | Vesting period begins |
+| `EXECUTING` | `COMPLETED` | All beneficiaries have claimed |
+| `ANY STATE` | `ACTIVE` | Owner proves life (7-day grace period) |
+
+---
+
+### User Workflows
+
+**� Owner Flow**
 ```
 Register → Add Guardians → Add Beneficiaries → Deposit Funds → Prove Life (Periodic)
 ```
 
-#### 🔵 Guardian Flow
+**�️ Guardian Flow**
 ```
-Monitor Owner Status → Detect Inactivity → Confirm Inactivity → Wait for Vesting
+Monitor Owner → Detect Inactivity → Confirm Inactivity → Wait for Vesting
 ```
 
-#### 🟣 Beneficiary Flow
+**� Beneficiary Flow**
 ```
-Wait for Execution State → Check Claimable Amount → Claim Assets → Receive Funds
+Wait for Execution → Check Claimable Amount → Claim Assets → Receive Funds
 ```
 
 ---
