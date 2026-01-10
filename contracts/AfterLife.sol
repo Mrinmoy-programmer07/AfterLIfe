@@ -9,7 +9,7 @@ contract AfterLife {
     uint256 public constant MIN_THRESHOLD = 1 minutes;
     uint256 public constant MAX_GUARDIANS = 10;
     uint256 public constant MAX_BENEFICIARIES = 20;
-    uint256 public constant REVIVE_GRACE_PERIOD = 7 days;
+    uint256 public constant REVIVE_GRACE_PERIOD = 2 minutes; // Reduced for demo (was 7 days)
     
     // Platform Fee: 10% (1000 basis points)
     uint256 public constant PLATFORM_FEE_BPS = 1000;

@@ -30,10 +30,10 @@ export interface ChainInfo {
 }
 
 // --- Contract Addresses per Chain ---
-// Updated: 2025-12-31
+// Updated: 2026-01-11 (2-minute grace period version)
 export const CONTRACT_ADDRESSES: Record<SupportedChainId, string> = {
-    [SUPPORTED_CHAINS.ARBITRUM_SEPOLIA]: "0xA39F43685807dD2155b01C404083a43834B98840",
-    [SUPPORTED_CHAINS.MANTLE_SEPOLIA]: "0x8fD3A16F905dF98907B3739bCD0E31a7949cd2D2",
+    [SUPPORTED_CHAINS.ARBITRUM_SEPOLIA]: "0xD41a552c20eA1459b90E8C800089535d97c81196",
+    [SUPPORTED_CHAINS.MANTLE_SEPOLIA]: "0x37f6b41b9d33325F5E129b193f67A9723f719a75",
 };
 
 // --- Chain Metadata for UI ---
