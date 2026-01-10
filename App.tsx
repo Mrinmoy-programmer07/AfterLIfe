@@ -48,6 +48,10 @@ const App: React.FC = () => {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [targetOwner, setTargetOwner] = useState<string>(''); // The owner address we are currently monitoring
 
+  // Refresh trigger - increment to force data re-fetch
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const triggerRefresh = () => setRefreshTrigger(prev => prev + 1);
+
   // Track previous chain to detect chain changes
   const previousChainId = useRef<number | undefined>(undefined);
 
@@ -267,6 +271,9 @@ const App: React.FC = () => {
       toast.success(`Claimed ${receivedAmount.toFixed(4)} ETH successfully!`, { id: toastId });
       addEvent(`Successfully claimed ${receivedAmount.toFixed(4)} ETH (after 10% fee)`, 'INFO');
 
+      // 4. Force data refresh to update UI
+      triggerRefresh();
+
     } catch (err: any) {
       const msg = err.shortMessage || err.message || 'Unknown error';
       toast.error(`Claim failed: ${msg}`, { id: toastId });
@@ -383,7 +390,7 @@ const App: React.FC = () => {
       const poll = setInterval(syncData, 15000);
       return () => clearInterval(poll);
     }
-  }, [isConnected, address, targetOwner, selectedChainId]);
+  }, [isConnected, address, targetOwner, selectedChainId, refreshTrigger]);
 
   // Auto-Route removed. We now wait for user selection.
 
