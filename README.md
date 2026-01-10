@@ -34,8 +34,8 @@ AfterLife ensures your digital assets are securely distributed to beneficiaries 
 
 | Network | Chain ID | Contract Address | Explorer | Status |
 |---------|:--------:|------------------|----------|:------:|
-| **Arbitrum Sepolia** | 421614 | `0xD41a552c20eA1459b90E8C800089535d97c81196` | [Arbiscan ↗](https://sepolia.arbiscan.io/address/0xD41a552c20eA1459b90E8C800089535d97c81196) | ✅ Live |
-| **Mantle Sepolia** | 5003 | `0x37f6b41b9d33325F5E129b193f67A9723f719a75` | [Mantlescan ↗](https://explorer.sepolia.mantle.xyz/address/0x37f6b41b9d33325F5E129b193f67A9723f719a75) | ✅ Live |
+| **Arbitrum Sepolia** | 421614 | `0x6D2Bd7091CE36F15C944AB99c4cfc8833c2B8957` | [Arbiscan ↗](https://sepolia.arbiscan.io/address/0x6D2Bd7091CE36F15C944AB99c4cfc8833c2B8957) | ✅ Live |
+| **Mantle Sepolia** | 5003 | `0xe04250cE4a9A2362eaC92B2BaA3E16E3691EBcE9` | [Mantlescan ↗](https://explorer.sepolia.mantle.xyz/address/0xe04250cE4a9A2362eaC92B2BaA3E16E3691EBcE9) | ✅ Live |
 
 > 💡 **Platform Fee:** 10% on all beneficiary claims (sent to protocol treasury)
 

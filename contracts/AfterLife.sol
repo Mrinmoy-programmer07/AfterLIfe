@@ -9,7 +9,7 @@ contract AfterLife {
     uint256 public constant MIN_THRESHOLD = 1 minutes;
     uint256 public constant MAX_GUARDIANS = 10;
     uint256 public constant MAX_BENEFICIARIES = 20;
-    uint256 public constant REVIVE_GRACE_PERIOD = 2 minutes; // Reduced for demo (was 7 days)
+    uint256 public constant REVIVE_GRACE_PERIOD = 7 days;
     
     // Platform Fee: 10% (1000 basis points)
     uint256 public constant PLATFORM_FEE_BPS = 1000;
@@ -444,9 +444,8 @@ contract AfterLife {
         if (!p.isDead) revert ProtocolActive();
         if (b.wallet == address(0)) revert NotBeneficiary();
         
-        if (block.timestamp <= p.deathDeclarationTime + REVIVE_GRACE_PERIOD) {
-            return (0, 0, 0);
-        }
+        // NOTE: Grace period check removed to allow immediate claims after inactivity confirmation
+        // The actual claim() function allows claiming during grace period, so this view should match
         
         totalEntitlement = (p.initialVaultBalance * b.allocation) / 10000;
         alreadyClaimed = b.amountClaimed;

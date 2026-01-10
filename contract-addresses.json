@@ -1,12 +1,12 @@
 {
   "mantleSepolia": {
-    "address": "0x37f6b41b9d33325F5E129b193f67A9723f719a75",
-    "deployedAt": "2026-01-10T21:14:23.719Z",
+    "address": "0xe04250cE4a9A2362eaC92B2BaA3E16E3691EBcE9",
+    "deployedAt": "2026-01-10T21:34:10.768Z",
     "chainId": 5003
   },
   "arbitrumSepolia": {
-    "address": "0xD41a552c20eA1459b90E8C800089535d97c81196",
-    "deployedAt": "2026-01-10T21:13:32.955Z",
+    "address": "0x6D2Bd7091CE36F15C944AB99c4cfc8833c2B8957",
+    "deployedAt": "2026-01-10T21:33:35.753Z",
     "chainId": 421614
   }
 }

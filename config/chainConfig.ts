@@ -30,10 +30,10 @@ export interface ChainInfo {
 }
 
 // --- Contract Addresses per Chain ---
-// Updated: 2026-01-11 (2-minute grace period version)
+// Updated: 2026-01-11 (Grace period check removed from getClaimableAmount)
 export const CONTRACT_ADDRESSES: Record<SupportedChainId, string> = {
-    [SUPPORTED_CHAINS.ARBITRUM_SEPOLIA]: "0xD41a552c20eA1459b90E8C800089535d97c81196",
-    [SUPPORTED_CHAINS.MANTLE_SEPOLIA]: "0x37f6b41b9d33325F5E129b193f67A9723f719a75",
+    [SUPPORTED_CHAINS.ARBITRUM_SEPOLIA]: "0x6D2Bd7091CE36F15C944AB99c4cfc8833c2B8957",
+    [SUPPORTED_CHAINS.MANTLE_SEPOLIA]: "0xe04250cE4a9A2362eaC92B2BaA3E16E3691EBcE9",
 };
 
 // --- Chain Metadata for UI ---
