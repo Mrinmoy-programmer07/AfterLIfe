@@ -72,7 +72,7 @@ export interface ProtocolContextType {
   updateBeneficiaryAllocation: (address: string, newAllocation: number) => void;
   vestingProgress: number; // 0 to 100
   elapsedTime: number; // Global clock for animations
-  claimBeneficiaryShare: (address: string) => void;
+  claimBeneficiaryShare: (address: string) => Promise<void>;
   events: ProtocolEvent[];
   addEvent: (message: string, type?: 'INFO' | 'WARNING' | 'CRITICAL') => void;
 }

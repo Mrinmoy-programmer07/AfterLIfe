@@ -180,7 +180,9 @@ const App: React.FC = () => {
 
   const {
     confirmInactivity: contractConfirmInactivity,
-    claim: contractClaim
+    claim: contractClaim,
+    getClaimableAmount,
+    getProtocolState: contractGetProtocolState,
   } = useAfterLifeContract();
 
   const confirmInactivity = async () => {
@@ -228,17 +230,47 @@ const App: React.FC = () => {
     });
   };
 
-  const claimBeneficiaryShare = async (address: string) => {
-    if (state !== ProtocolState.EXECUTING) return;
-    try {
-      addEvent(`Initiating claim for beneficiary...`, 'INFO');
-      await contractClaim(targetOwner);
-      addEvent(`Successful claim processed on-chain.`, 'INFO');
+  const claimBeneficiaryShare = async (beneficiaryAddress: string) => {
+    const toastId = toast.loading('Preparing claim...');
 
-      // Update local state for immediate feedback if possible, or wait for sync
+    try {
+      // 1. Verify protocol is in execution state on-chain
+      const protocolState = await contractGetProtocolState(targetOwner);
+      if (!protocolState?.isDead) {
+        toast.error('Protocol is not in execution state. Owner may still be active.', { id: toastId });
+        addEvent('Claim rejected: Protocol not in execution state', 'WARNING');
+        return;
+      }
+
+      // 2. Verify claimable amount on-chain
+      const claimInfo = await getClaimableAmount(targetOwner, beneficiaryAddress);
+      if (!claimInfo) {
+        toast.error('Could not verify claimable amount. Please try again.', { id: toastId });
+        return;
+      }
+
+      if (claimInfo.claimable === 0n) {
+        toast.error('Nothing to claim yet. Vesting may not have reached your allocation.', { id: toastId });
+        addEvent('Claim rejected: No claimable amount available', 'INFO');
+        return;
+      }
+
+      // 3. Execute claim
+      toast.loading('Confirming transaction in wallet...', { id: toastId });
+      addEvent(`Initiating claim for ${formatEther(claimInfo.claimable)} ETH...`, 'INFO');
+
+      await contractClaim(targetOwner);
+
+      const claimedAmount = Number(claimInfo.claimable) / 1e18;
+      const receivedAmount = claimedAmount * 0.9; // After 10% platform fee
+
+      toast.success(`Claimed ${receivedAmount.toFixed(4)} ETH successfully!`, { id: toastId });
+      addEvent(`Successfully claimed ${receivedAmount.toFixed(4)} ETH (after 10% fee)`, 'INFO');
+
     } catch (err: any) {
-      addEvent(`Claim failed: ${err.message}`, 'WARNING');
-      throw err;
+      const msg = err.shortMessage || err.message || 'Unknown error';
+      toast.error(`Claim failed: ${msg}`, { id: toastId });
+      addEvent(`Claim failed: ${msg}`, 'WARNING');
     }
   };
 

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, Button, Progress, Badge } from '../components/ui/Primitives';
 import { ProtocolContextType, AssetState, ProtocolState } from '../types';
-import { Unlock, Briefcase, Clock } from 'lucide-react';
+import { Unlock, Briefcase, Clock, Loader2 } from 'lucide-react';
 import { formatDuration } from '../services/mockService';
 import { useAccount } from 'wagmi';
 
@@ -69,9 +69,16 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
     const claimableEth = Math.max(0, vestedEth - claimedEth);
     const lockedEth = userShare - vestedEth;
 
-    const handleClaim = () => {
-        if (currentUser && claimableEth > 0) {
-            context.claimBeneficiaryShare(currentUser.address);
+    // Loading state for claim button
+    const [isClaimLoading, setIsClaimLoading] = useState(false);
+
+    const handleClaim = async () => {
+        if (!currentUser || claimableEth <= 0 || isClaimLoading) return;
+        setIsClaimLoading(true);
+        try {
+            await context.claimBeneficiaryShare(currentUser.address);
+        } finally {
+            setIsClaimLoading(false);
         }
     };
 
@@ -144,10 +151,18 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
 
                             <Button
                                 onClick={handleClaim}
-                                disabled={!currentUser || claimableEth <= 0}
-                                className={`w-full mt-4 ${currentUser && claimableEth > 0 ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'opacity-50 cursor-not-allowed'}`}
+                                disabled={!currentUser || claimableEth <= 0 || isClaimLoading}
+                                className={`w-full mt-4 ${currentUser && claimableEth > 0 && !isClaimLoading ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'opacity-50 cursor-not-allowed'}`}
                             >
-                                {!currentUser ? 'Access Denied' : claimableEth > 0 ? `Claim ${(claimableEth * 0.9).toFixed(4)} ETH` : 'Pending Vesting'}
+                                {isClaimLoading ? (
+                                    <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Claiming...</>
+                                ) : !currentUser ? (
+                                    'Access Denied'
+                                ) : claimableEth > 0 ? (
+                                    `Claim ${(claimableEth * 0.9).toFixed(4)} ETH`
+                                ) : (
+                                    'Pending Vesting'
+                                )}
                             </Button>
                         </div>
                     </Card>
