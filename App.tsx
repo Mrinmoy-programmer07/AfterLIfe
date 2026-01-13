@@ -170,17 +170,21 @@ const App: React.FC = () => {
       // ... (StateMachine Logic)
 
       if (state === ProtocolState.EXECUTING && vestingStartTime) {
-        // Demo Vesting: Use a fake "Total Duration" of 5 minutes for demo
-        // In real app, this would use beneficiary.vestingDuration
-        const demoVestingDuration = 300000;
+        // Use actual vestingDuration from beneficiary data (in seconds, convert to ms)
+        // Find the shortest vesting duration among all beneficiaries for progress display
+        // If no beneficiaries or no duration, fall back to 2 minutes for demo
+        const shortestVestingMs = beneficiaries.length > 0
+          ? Math.min(...beneficiaries.map(b => (b.vestingDuration || 120) * 1000))
+          : 120000; // 2 minutes default
+
         const elapsed = now - vestingStartTime;
-        const progress = Math.min((elapsed / demoVestingDuration) * 100, 100);
+        const progress = Math.min((elapsed / shortestVestingMs) * 100, 100);
 
         setVestingProgress(progress);
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [lastHeartbeat, state, vestingStartTime]);
+  }, [lastHeartbeat, state, vestingStartTime, beneficiaries]);
 
   const {
     confirmInactivity: contractConfirmInactivity,

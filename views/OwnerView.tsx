@@ -48,7 +48,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
         address: '',
         allocation: 0,
         vestingType: 'LINEAR',
-        vestingDuration: 12 // Default 1 year
+        vestingDuration: 2 // Default 2 minutes for testing
     });
 
     const handleProveLife = async () => {
@@ -140,8 +140,8 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
                 // Convert vesting type to enum (0 = LINEAR, 1 = CLIFF)
                 const vestingTypeEnum = newBeneficiary.vestingType === 'LINEAR' ? 0 : 1;
 
-                // Convert duration from months to seconds
-                const durationSeconds = newBeneficiary.vestingDuration * 30 * 24 * 60 * 60;
+                // Convert duration from minutes to seconds (for demo/testing)
+                const durationSeconds = newBeneficiary.vestingDuration * 60;
 
                 // Call actual contract
                 await contractAddBeneficiary(
@@ -162,7 +162,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
                     vestingDuration: durationSeconds
                 });
 
-                setNewBeneficiary({ name: '', address: '', allocation: 0, vestingType: 'LINEAR', vestingDuration: 12 });
+                setNewBeneficiary({ name: '', address: '', allocation: 0, vestingType: 'LINEAR', vestingDuration: 2 });
                 setIsAddBeneficiaryOpen(false);
             } catch (error) {
                 console.error("Failed to add beneficiary:", error);
@@ -383,7 +383,7 @@ const OwnerView: React.FC<{ context: ProtocolContextType }> = ({ context }) => {
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs text-secondary uppercase">Duration (Months)</label>
+                            <label className="text-xs text-secondary uppercase">Duration (Minutes)</label>
                             <input
                                 type="number"
                                 className="w-full bg-stone-950 border border-stone-800 rounded p-2 text-white mt-1 focus:border-emerald-500 outline-none"
