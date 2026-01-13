@@ -76,13 +76,13 @@ const BeneficiaryList: React.FC<BeneficiaryListProps> = ({ beneficiaries, onUpda
                             <div className="flex justify-between text-xs text-stone-400 mb-1">
                                 <span className="flex items-center gap-1">
                                     <Coins className="w-3 h-3" />
-                                    Claimed: {beneficiary.amountClaimed}
+                                    Claimed: {(Number(beneficiary.amountClaimed) / 1e18).toFixed(4)} ETH
                                 </span>
                             </div>
                             <div className="h-1 bg-stone-800 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-emerald-500/50"
-                                    style={{ width: beneficiary.amountClaimed === '0 ETH' ? '0%' : '10%' }}
+                                    style={{ width: Number(beneficiary.amountClaimed) === 0 ? '0%' : '100%' }}
                                 />
                             </div>
                         </div>

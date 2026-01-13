@@ -160,6 +160,10 @@ const BeneficiaryView: React.FC<{ context: ProtocolContextType }> = ({ context }
                                     'Access Denied'
                                 ) : claimableEth > 0 ? (
                                     `Claim ${(claimableEth * 0.9).toFixed(4)} ETH`
+                                ) : claimedEth >= userShare * 0.99 ? (
+                                    '✓ Fully Claimed'
+                                ) : context.vestingProgress >= 100 ? (
+                                    '✓ Claimed'
                                 ) : (
                                     'Pending Vesting'
                                 )}
